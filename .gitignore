@@ -7,3 +7,5 @@
 crash.log
 crash.*.log
 .DS_Store
+.teardown/
+__pycache__/

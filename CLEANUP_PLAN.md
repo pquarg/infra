@@ -1,16 +1,29 @@
 # Cleanup history and future teardown
 
-Use the [complete teardown walkthrough](../deploy-aws/docs/teardown.md) for
-step-by-step commands, database/log choices, temporary edge configuration,
-verification and restoration. Its keep-logs branch explicitly retains the
-bucket outside root state and documents importing it on the next rebuild.
-The dated summary below records context; the walkthrough is the execution guide.
+Use [single-command complete removal](docs/teardown.md) to delete this deployment,
+including all database snapshots/backups, access logs and the state backend:
+
+```sh
+./scripts/teardown-all.py
+```
+
+The script uses private configuration copies, pauses GitOps reconciliation,
+checks plans and removal, and deletes the backend last using local state. It
+supports read-only `--check`, unattended `--yes`, and `--resume DIRECTORY`.
+Offline tests pass; the new command has not executed a live teardown.
+
+Use the [manual teardown walkthrough](../deploy-aws/docs/teardown.md) when you
+want database/log retention choices and to keep the state backend by default.
+Its keep-logs branch retains the bucket outside root state and documents
+importing it on the next rebuild. The manual steps and dated history below
+describe that retention-aware procedure, not the complete-removal command.
 
 ## Current status — 2026-11-01
 
 The user requested a rebuild after the October 31 teardown. The environment is
-now running and public HTTPS/authentication/log delivery are verified. No cleanup
-is currently requested. The root Terraform state is populated; an empty-state
+now running and public HTTPS/authentication/log delivery are verified. A complete
+teardown command was subsequently requested and prepared; it has not been run.
+The root Terraform state is populated; an empty-state
 check is no longer the expected result. See [README](README.md) and the
 [deployment handoff](../deploy-aws/docs/deployment-progress.md).
 

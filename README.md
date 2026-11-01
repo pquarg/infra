@@ -4,6 +4,9 @@ Terraform for project `245361883993`, AWS profile `aws-project`, selected Region
 `eu-north-1` (Stockholm). Regional resources stay in Stockholm; CloudFront is
 global and its standard-log delivery configuration uses `us-east-1` as required.
 
+For a high-level explanation of the components, request flow, ownership, and
+deployment lifecycle, read [How this repository works](docs/architecture.md).
+
 ## Current deployment
 
 Verified **2026-11-01**: EKS workers Ready, Argo CD/app Synced and Healthy,
@@ -21,13 +24,31 @@ bucket with the selected fields. The full post-apply Terraform plan reports
 - Internal ALB: `deployment-project-dev-app`, owned by the Kubernetes controller
 - Logs: `deployment-project-cf-logs-245361883993-eu-north-1`, 14-day expiry
 - [Complete deployment/rebuild walkthrough](../deploy-aws/docs/deploy-from-scratch.md)
-- [Complete teardown walkthrough](../deploy-aws/docs/teardown.md)
+- [Single-command complete teardown](docs/teardown.md)
+- [Manual teardown with retention choices](../deploy-aws/docs/teardown.md)
 - [Deployment handoff](../deploy-aws/docs/deployment-progress.md)
 - [Public access runbook](../deploy-aws/docs/public-access.md)
 
 This is a learning environment: two small workers and one app replica. App syncs
 remain manual. WAF is not configured. Resources continue to incur usage while
 running; use the [cleanup plan](CLEANUP_PLAN.md) for deliberate removal.
+
+## Tear down everything in this deployment
+
+From this repository:
+
+```sh
+./scripts/teardown-all.py
+```
+
+Type the project ID once to confirm. This removes the runtime, **all database
+snapshots/retained backups, access logs and the Terraform state bucket/history**.
+Use `--check` for read-only AWS preflight or `--yes` to skip the initial prompt.
+The command handles CloudFront → Kubernetes/ALB → runtime → state backend order
+using private configuration copies, without editing source files or publishing
+Git changes. It records progress for `--resume` after interruption. See the
+[command runbook](docs/teardown.md) for prerequisites, scope and rebuilding the
+backend afterward. Offline tests pass; live deletion has not been exercised.
 
 ## Operator-IP restriction — prepared, not applied
 
@@ -91,6 +112,7 @@ From this repository, with the existing `aws-project` login:
 terraform init
 terraform validate
 node --test tests/*.test.cjs
+python3 -m unittest discover -s tests -p 'test_teardown_all.py'
 terraform plan
 ```
 
