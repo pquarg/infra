@@ -1,0 +1,2 @@
+# Replace this documentation-only address with your current public IPv4.
+eks_admin_cidrs = ["203.0.113.10/32"]
