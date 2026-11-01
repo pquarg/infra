@@ -14,6 +14,18 @@ resource "aws_cloudfront_function" "https_redirects" {
   code    = file("${path.module}/functions/https-redirects.js")
 }
 
+# Use the same exact IPv4 addresses as the Kubernetes administrator allowlist.
+# Reject at viewer-request so denied requests never reach the private origin.
+resource "aws_cloudfront_function" "ip_allowlist" {
+  name    = "deployment-project-dev-ip-allowlist"
+  runtime = "cloudfront-js-2.0"
+  comment = "Restrict the learning app to the configured administrator IPv4 addresses"
+  publish = true
+  code = templatefile("${path.module}/functions/ip-allowlist.js.tftpl", {
+    allowed_ips = jsonencode([for cidr in var.eks_admin_cidrs : trimsuffix(cidr, "/32")])
+  })
+}
+
 resource "aws_cloudfront_response_headers_policy" "api" {
   name = "deployment-project-dev-myfastapiapp"
 
@@ -52,9 +64,10 @@ resource "aws_cloudfront_response_headers_policy" "api" {
 }
 
 resource "aws_cloudfront_distribution" "myfastapiapp" {
-  comment             = "Learning FastAPI application through a private Stockholm ALB"
-  enabled             = true
-  is_ipv6_enabled     = true
+  comment = "Learning FastAPI application through a private Stockholm ALB"
+  enabled = true
+  # The allowlist uses exact IPv4 addresses; avoid browsers choosing IPv6.
+  is_ipv6_enabled     = false
   http_version        = "http2and3"
   price_class         = "PriceClass_100"
   wait_for_deployment = true
@@ -80,6 +93,11 @@ resource "aws_cloudfront_distribution" "myfastapiapp" {
     origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.api_all_viewer.id
     response_headers_policy_id = aws_cloudfront_response_headers_policy.api.id
     compress                   = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.ip_allowlist.arn
+    }
 
     function_association {
       event_type   = "viewer-response"

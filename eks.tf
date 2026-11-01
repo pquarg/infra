@@ -1,5 +1,5 @@
 variable "eks_admin_cidrs" {
-  description = "Public IPv4 /32 addresses allowed to reach the Kubernetes API."
+  description = "Public IPv4 /32 addresses allowed to reach the Kubernetes API and the CloudFront app."
   type        = list(string)
 
   validation {

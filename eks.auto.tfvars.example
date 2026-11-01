@@ -1,2 +1,3 @@
 # Replace this documentation-only address with your current public IPv4.
+# This same allowlist restricts both the Kubernetes API and the CloudFront app.
 eks_admin_cidrs = ["203.0.113.10/32"]

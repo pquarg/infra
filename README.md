@@ -29,6 +29,36 @@ This is a learning environment: two small workers and one app replica. App syncs
 remain manual. WAF is not configured. Resources continue to incur usage while
 running; use the [cleanup plan](CLEANUP_PLAN.md) for deliberate removal.
 
+## Operator-IP restriction — prepared, not applied
+
+The user requested access only from their own public IP. `cloudfront.tf` now
+adds a viewer-request function that allows only the exact IPv4 `/32` addresses
+in the ignored `eks.auto.tfvars` variable `eks_admin_cidrs`. The same list now
+restricts both Kubernetes API access and all app endpoints. The function uses
+CloudFront's connection IP rather than forwarded headers; every other address
+receives 403 before reaching the origin. IPv6 is disabled so browsers use the
+IPv4 allowlist. The existing private ALB and security groups stay in place.
+
+Terraform validation and all 12 function tests passed. The full saved plan
+`app-ip-allowlist.tfplan` proposes **1 addition, 1 in-place change, 0 deletions**.
+It creates the function and updates CloudFront. The live app remains public
+until the user applies this plan and the distribution finishes deploying:
+
+```sh
+terraform show -no-color app-ip-allowlist.tfplan
+terraform apply app-ip-allowlist.tfplan
+```
+
+Verify the app works from the allowed connection and returns 403 from another
+network (for example, a phone with Wi-Fi off). Run a full plan afterward and
+expect no changes. See the [access and recovery runbook](../deploy-aws/docs/public-access.md#restrict-the-app-to-the-operators-ip--prepared-not-applied).
+
+Anyone sharing the allowed public IP is allowed through this network check;
+application authentication still applies. A changed ISP/VPN IPv4 requires an
+updated ignored allowlist and a new reviewed plan/apply, affecting both EKS and
+the app. IPv6-only clients cannot connect. CloudFront Function invocations have
+the existing usage-based billing; no WAF subscription is added.
+
 ## Ownership and state
 
 This repository manages networking, EKS/worker IAM, RDS, the Argo CD and load
@@ -49,7 +79,8 @@ locking and explicit profile/Region/project restrictions:
 Commit Terraform/module configuration, both provider lock files, public policy
 JSON, function code/tests and the operator-IP example. Keep `.terraform/`, real
 `.tfvars`, state, binary plans, passwords and private keys outside Git. The real
-`eks.auto.tfvars` contains the operator's current IPv4 `/32`; it is ignored.
+`eks.auto.tfvars` contains the operator's current IPv4 `/32`, shared by EKS and
+app access; it is ignored.
 All saved creation plans from this session are consumed/stale.
 
 ## Validation and changes
@@ -59,7 +90,7 @@ From this repository, with the existing `aws-project` login:
 ```sh
 terraform init
 terraform validate
-node --test tests/https-redirects.test.cjs
+node --test tests/*.test.cjs
 terraform plan
 ```
 
