@@ -1,5 +1,11 @@
 # Remove the complete learning deployment
 
+This runbook describes the complete-removal procedure without assuming that
+the deployment is currently running. Establish which resources and state keys
+exist before starting. If a previous run was interrupted, use its `--resume`
+procedure below. If resources and the backend have already been removed, no
+new teardown run is needed.
+
 From `infra/`, run:
 
 ```sh
@@ -49,7 +55,7 @@ can establish that every service accepts its deletion operations.
 2. In an isolated copy of the Terraform configuration, removes RDS deletion
    safeguards, selects no final snapshot/no retained automated backups, and
    enables emptying the access-log bucket. A settings-only targeted plan avoids
-   deploying the pending IP-allowlist function or other unrelated changes.
+   deploying unrelated configuration changes.
 3. Removes both CloudFront functions if present, the distribution, VPC origin,
    log delivery and log bucket through a normal configuration-removal plan.
    EKS, RDS, controllers and networking remain running at this checkpoint.
@@ -123,13 +129,14 @@ Do not reuse the deleted environment's nonempty state backups as new live state.
 For a manual teardown that **retains** the state backend and offers database/log
 retention choices, use [the deployment runbook](../../deploy-aws/docs/teardown.md).
 
-## Validation status
+## Local validation
 
 The command has offline regression tests for plan restrictions, phase ordering,
-failure/resume, AWS error handling, configuration isolation and the switch to
-local bootstrap state. Temporary Terraform configurations are also validated.
-It has **not been exercised against the live deployment**; testing the real
-deletion would itself remove the running environment.
+failure/resume, AWS error handling, configuration isolation, and the switch to
+local bootstrap state. They run without invoking AWS, Kubernetes, or Terraform.
+They do not establish whether resources currently exist or whether AWS will
+accept a particular deletion; each teardown must pass its own preflight, plan
+checks, and removal verification.
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_teardown_all.py' -v

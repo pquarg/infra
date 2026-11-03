@@ -10,10 +10,9 @@ The environment is named `deployment-project-dev`, targets AWS project
 `eu-north-1` (Stockholm). CloudFront is global; its log-delivery configuration
 uses `us-east-1`, with the destination bucket in Stockholm.
 
-This guide describes the checked-in configuration, not a live AWS inventory.
-The [README](../README.md) records deployment status. In particular, it records
-the app IP restriction as **prepared but not applied** on 2026-11-01; the
-allowlist below describes the configured behavior once deployed.
+This guide describes the checked-in configuration and how its components work
+when deployed. It applies whether the infrastructure is running, partially
+deployed, or removed; it is not a live AWS inventory.
 
 ## Request flow
 
@@ -130,13 +129,14 @@ dependencies, not filename order. `bootstrap/` is a separate root module.
 | [`app-ingress.tf`](../app-ingress.tf) | ALB frontend security group and its CloudFront/worker traffic rules; the actual Ingress lives in `deploy-aws` |
 | [`cloudfront-origin.tf`](../cloudfront-origin.tf), [`cloudfront.tf`](../cloudfront.tf) | ALB lookup, private VPC origin, distribution, functions, and response policy |
 | [`cloudfront-logs.tf`](../cloudfront-logs.tf) | S3 access-log bucket and global-service log delivery |
-| [`functions/`](../functions/), [`tests/`](../tests/) | CloudFront JavaScript functions and local Node.js behavior tests |
+| [`functions/`](../functions/), [`tests/`](../tests/) | CloudFront JavaScript functions, Node.js behavior tests, and Python teardown tests |
+| [`scripts/teardown-all.py`](../scripts/teardown-all.py), [`docs/teardown.md`](teardown.md) | Complete-removal command and its runbook |
 | [`eks.auto.tfvars.example`](../eks.auto.tfvars.example) | Example of the shared operator IPv4 allowlist; real values belong in ignored `eks.auto.tfvars` |
-| [`CLEANUP_PLAN.md`](../CLEANUP_PLAN.md) | Teardown dependencies, retention decisions, and historical cleanup context |
+| [`CLEANUP_PLAN.md`](../CLEANUP_PLAN.md) | Teardown dependencies and retention choices |
 
 ## State and deployment flow
 
-Both Terraform roots store state in the same retained S3 bucket,
+Both Terraform roots are configured to store state in the same S3 bucket,
 `deployment-project-tfstate-245361883993-eu-north-1`, under separate keys:
 
 | Root module | State key |
@@ -146,11 +146,12 @@ Both Terraform roots store state in the same retained S3 bucket,
 
 The backends use encryption and native S3 locking. The bootstrap bucket is kept
 separate so the application infrastructure can be removed while retaining state
-storage. Both checked-in backends expect that bucket to exist; creating state
-storage for an entirely new environment is a separate bootstrap step.
+storage. Both checked-in backends expect that bucket to exist. If it is absent,
+follow the [backend creation procedure](teardown.md#rebuild-after-deleting-the-backend)
+before normal initialization.
 
-A rebuild crosses the Terraform/Kubernetes ownership boundary, so it happens in
-stages:
+Deployment or rebuilding crosses the Terraform/Kubernetes ownership boundary,
+so it happens in stages:
 
 1. Provision the VPC, EKS workers, and RDS dependencies.
 2. Install Argo CD and the load balancer controller; provision the ALB frontend
@@ -170,30 +171,35 @@ plans and runs applies; application releases follow the separate `deploy-aws`
 process and manual app sync.
 
 For removal, the dependency order matters too: remove the CloudFront distribution
-and VPC origin before the ALB, then deliberately prune the app Ingress through
-GitOps while its controller still runs. Remove the remaining infrastructure
-afterward, following the [cleanup plan](../CLEANUP_PLAN.md) and
-[teardown walkthrough](../../deploy-aws/docs/teardown.md).
+and VPC origin before the ALB, and remove the app Ingress while its controller
+still runs. The [complete-removal command](teardown.md) pauses Argo CD and removes
+Ingresses directly; the [manual walkthrough](../../deploy-aws/docs/teardown.md)
+uses deliberate GitOps pruning. Remove the remaining runtime afterward. The
+[cleanup plan](../CLEANUP_PLAN.md) explains retention choices; complete removal
+also deletes snapshots/backups, logs, and the state backend.
 
 ## Working with changes
 
-With Terraform, Node.js, and the existing AWS login configured, the repo's
-standard checks are:
+Local function and teardown tests do not require a deployed environment:
 
 ```sh
-terraform init
-terraform validate
 node --test tests/*.test.cjs
-terraform plan
+python3 -m unittest discover -s tests -p 'test_teardown_all.py'
 ```
 
 The Node.js tests cover IP matching and rejection, spoofed headers, missing
-viewer data, and safe HTTPS redirect rewriting. They do not verify live AWS
-connectivity or application health. Terraform outputs expose network IDs,
-cluster name, database connection metadata, the ALB frontend group, and the
-CloudFront endpoint for the deployment handoff.
+viewer data, and safe HTTPS redirect rewriting. Python tests cover teardown
+plan restrictions, phase ordering, failure/resume, and configuration isolation.
+These tests do not verify live AWS connectivity, application health, or service
+deletion behavior.
+
+See the [README](../README.md#validation-and-changes) for Terraform validation
+without a backend and the prerequisites for planning deployed changes. A full
+plan requires the ALB and cluster dependencies described above. After deployment,
+Terraform outputs expose network IDs, cluster name, database connection metadata,
+the ALB frontend group, and the generated CloudFront endpoint.
 
 Commit configuration, provider lock files, public IAM policy JSON, functions,
 and tests. Keep real `.tfvars`, Terraform state, binary plans, passwords, and
-private keys outside Git. See the [README](../README.md) for current status and
-links to the operational runbooks.
+private keys outside Git. The [README](../README.md) links to the operational
+runbooks and describes deployment, changes, and removal.
