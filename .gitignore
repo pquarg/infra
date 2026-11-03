@@ -1,0 +1,7 @@
+.DS_Store
+.env
+.env.*
+*.log
+/kind/**/*.local.yaml
+**/*-secrets.yaml
+**/secrets.yaml
