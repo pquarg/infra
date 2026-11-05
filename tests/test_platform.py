@@ -80,18 +80,32 @@ class ImportTests(unittest.TestCase):
                                        "--context", "kind-example"])
             self.assertIn("get", read)
 
-    def test_new_state_imports_secrets_using_sensitive_typed_resource(self):
+    def test_new_state_imports_secrets_using_redacted_manifest_resource(self):
         secret = {"apiVersion": "v1", "kind": "Secret", "metadata": {
             "name": "argocd-secret", "namespace": "argocd",
         }}
         address = importer.installation_address(renderer.resource_key(secret), secret)
-        self.assertTrue(address.startswith("kubernetes_secret_v1.installation["))
+        self.assertTrue(address.startswith("kubectl_manifest.installation["))
         with tempfile.TemporaryDirectory() as directory:
             with (patch.object(importer, "ROOT", Path(directory)),
                   patch.object(importer.subprocess, "run") as run,
                   patch.object(importer.subprocess, "check_output", return_value="secret/argocd-secret")):
                 importer.adopt("argocd", [(address, secret)], "kind-example", "example", "/tmp/config")
-            self.assertEqual(run.call_args_list[-1].args[0][-1], "argocd/argocd-secret")
+            self.assertEqual(run.call_args_list[-1].args[0][-1], "v1//Secret//argocd-secret//argocd")
+
+    def test_legacy_secret_state_is_rejected_before_import(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state_root = root / "terraform/argocd"
+            state_root.mkdir(parents=True)
+            (state_root / "terraform.tfstate").write_text("{}")
+            legacy = 'kubernetes_secret_v1.installation["v1/Secret/argocd/argocd-secret"]'
+            with (patch.object(importer, "ROOT", root),
+                  patch.object(importer.subprocess, "run") as run,
+                  patch.object(importer.subprocess, "check_output", return_value=legacy + "\n"),
+                  self.assertRaisesRegex(ValueError, "Secret state migration")):
+                importer.adopt("argocd", [], "kind-example", "example", "/tmp/config")
+            self.assertEqual(len(run.call_args_list), 1)
 
     def test_wrong_cluster_state_is_rejected_before_import(self):
         with tempfile.TemporaryDirectory() as directory:

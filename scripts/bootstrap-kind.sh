@@ -46,6 +46,11 @@ for stage in argocd platform; do
       printf 'Error: %s state belongs to %s. Use separate state/checkouts for different clusters.\n' "$stage" "$tracked_context" >&2
       exit 1
     fi
+    tracked_resources="$(terraform -chdir="$stage_root" state list)"
+    if [[ "$tracked_resources" == *'kubernetes_secret_v1.installation['* ]]; then
+      printf 'Error: Secret state migration required; see docs/terraform.md#secret-state-migration.\n' >&2
+      exit 1
+    fi
   fi
 done
 printf 'Review the Argo CD plan. Existing resources must be imported before this apply.\n'

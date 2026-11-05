@@ -39,7 +39,10 @@ state handling and adopting an existing installation without rebuilding it.
 
 Install Docker Desktop (and start it), kind, kubectl, Python 3 and Terraform
 `1.17.x` (CI uses `1.17.1`). The Terraform Kubernetes provider is pinned to
-`3.4.0`; both roots have committed provider lock files. The existing deployment
+`3.4.0`. The Argo CD root also pins `alekc/kubectl` to `3.0.1` for its two
+empty bootstrap Secrets, avoiding a typed-resource metadata-formatting hang
+while preserving credential redaction. Both roots have committed provider lock
+files. The existing deployment
 validation targets Kubernetes `1.36.0`,
 kubectl `v1.36.1`, kind `v0.33.0`; the cluster example uses kind's default node
 image. For schema validation also install kubeconform `v0.8.0`. On macOS,

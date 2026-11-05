@@ -1,6 +1,28 @@
 # This file is maintained automatically by "terraform init".
 # Manual edits may be lost in future updates.
 
+provider "registry.terraform.io/alekc/kubectl" {
+  version     = "3.0.1"
+  constraints = "3.0.1"
+  hashes = [
+    "h1:TT3Rt1xp991gkSj3coky7Yzz6yTpMbsHF4t2OByLYM8=",
+    "zh:09b99cac633d61dcd20e4d655d86a6be98ba1685b5ce0adadda4b00edb83e1f0",
+    "zh:38ce3d5ec316c3de3d351c57bb2fbc32f3cf188ca69ab9c7bc48fd761cf5b047",
+    "zh:3dd0a8634afa8a5cbdbf7d00cd9dd97bca51a005e778796a8b43eb80075d743a",
+    "zh:4a9ec3b0d28393eaaf4de83d34176eb845d844e8f9950ba82983bab10162d036",
+    "zh:4db8d8bff448b66f25c6dc387d0d739e4120fba1af15763b88cf70de682f8642",
+    "zh:4f0d5980ee02e94fba8aef3c6cd80e20eea1923db8315b4700eab419d024a480",
+    "zh:738f526a6a07dd0310fdee3f254aeaa2ed511783bde4222c09b8068959835396",
+    "zh:771fe1fbc65c2c0b652519dc242c87349f15d94575baeb9b22006ceee38c2918",
+    "zh:7802980eb31fb304b73ac6f27ce9d0167f54de2a5ef3486b7049de456e0c34ed",
+    "zh:7c5d1facb6df961ab64b6f76a4434e605d2594938b1920ebb01a433689719fae",
+    "zh:b3cfac0f9c2e8cac8caa2bb7f9970e5a729fa66eddf4878e9e04d0e527f97b7f",
+    "zh:d05e7cccaab437f08441b7ec7c84d20b309b19a62d15bac1910fa11c859c379a",
+    "zh:eeb28ebf7a79d734c19c20ba7cb3d2bd320eecddbb01b846c8fc15d6ac379d0c",
+    "zh:f809ab383cca0a5f83072981c64208cbd7fa67e986a86ee02dd2c82333221e32",
+  ]
+}
+
 provider "registry.terraform.io/hashicorp/kubernetes" {
   version     = "3.4.0"
   constraints = "3.4.0"

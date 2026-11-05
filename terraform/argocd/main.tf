@@ -34,21 +34,21 @@ resource "kubernetes_manifest" "installation" {
   depends_on = [kubernetes_manifest.namespace]
 }
 
-resource "kubernetes_secret_v1" "installation" {
-  # Use the typed resource so controller-populated credentials stay sensitive
-  # in plans. Terraform creates the empty upstream Secret, not its credentials.
-  for_each = { for key, manifest in local.installation : key => manifest if manifest.kind == "Secret" }
+resource "kubectl_manifest" "installation" {
+  # The typed Kubernetes Secret resource hangs formatting metadata on this host.
+  # This provider redacts credentials without using that typed-resource path.
+  # Own only the empty upstream Secret; Argo CD owns its populated data.
+  for_each  = { for key, manifest in local.installation : key => manifest if manifest.kind == "Secret" }
+  yaml_body = jsonencode(each.value)
 
-  metadata {
-    name      = each.value.metadata.name
-    namespace = each.value.metadata.namespace
-    labels    = try(each.value.metadata.labels, {})
-  }
-  type = try(each.value.type, "Opaque")
+  server_side_apply = true
+  field_manager     = "infra-local-terraform"
+  force_conflicts   = true
+  ignore_fields     = ["data", "stringData"]
+  sensitive_fields  = ["data", "stringData"]
 
   lifecycle {
     prevent_destroy = true
-    ignore_changes  = [data, binary_data]
   }
 
   depends_on = [kubernetes_manifest.namespace]

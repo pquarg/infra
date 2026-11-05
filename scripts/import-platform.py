@@ -31,7 +31,7 @@ def import_id(resource):
 
 
 def installation_address(key, resource):
-    kind = "kubernetes_secret_v1" if resource["kind"] == "Secret" else "kubernetes_manifest"
+    kind = "kubectl_manifest" if resource["kind"] == "Secret" else "kubernetes_manifest"
     return f"{kind}.installation[{json.dumps(key)}]"
 
 
@@ -45,6 +45,8 @@ def adopt(root, resources, context, cluster, kubeconfig):
         previous_context = state_data.get("outputs", {}).get("context", {}).get("value")
         if previous_context and previous_context != context:
             raise ValueError(f"{root} state belongs to {previous_context}; use separate state/checkouts")
+    if any(address.startswith("kubernetes_secret_v1.installation[") for address in tracked):
+        raise ValueError("Secret state migration required; see docs/terraform.md#secret-state-migration")
     for address, resource in resources:
         if address in tracked:
             print(f"Already imported: {address}", flush=True)
@@ -59,7 +61,10 @@ def adopt(root, resources, context, cluster, kubeconfig):
             continue
         identifier = import_id(resource)
         if resource["kind"] == "Secret":
-            identifier = resource["metadata"]["namespace"] + "/" + resource["metadata"]["name"]
+            identifier = "//".join((
+                resource["apiVersion"], "Secret", resource["metadata"]["name"],
+                resource["metadata"]["namespace"],
+            ))
         subprocess.run(
             [*terraform, "import", "-input=false", f"-var=cluster_name={cluster}",
              f"-var=kubeconfig_path={kubeconfig}", address, identifier], check=True,

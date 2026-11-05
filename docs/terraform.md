@@ -99,9 +99,13 @@ can be rerun. Argo CD's CRDs must already be installed to import its Application
 
 Review both plans as described above. `force_conflicts` transfers ownership of
 declared manifest fields from the retired kubectl installer during a reviewed
-apply. Terraform uses typed Secret resources so credentials are marked sensitive
-in its plans; their data is ignored so Argo CD/controller-populated keys and
-notification credentials are not reset. Git repository Secrets, app Secrets and
+apply. The Argo CD root uses the pinned `alekc/kubectl` provider only for the two
+empty installation Secrets. Its `ignore_fields` leaves `data` and `stringData`
+to Argo CD; `sensitive_fields` redacts those fields in displayed plans. This
+avoids a reproducible hang in the typed Kubernetes Secret resource while it
+formats timestamp metadata for logging, before contacting Kubernetes. The
+Kubernetes provider remains pinned at `3.4.0` for all other platform resources.
+Git repository Secrets, app Secrets and
 the initial-admin-password Secret are not part of this Terraform configuration.
 Keep full state files private even though terminal plans redact Secret data.
 
@@ -109,6 +113,32 @@ Once adopted, use Terraform for installation and registration changes. The
 remaining shell scripts create kind or verify readiness; none still applies
 these resources with kubectl. Traefik's workloads remain Argo CD-owned and must
 not be imported into Terraform.
+
+## Secret state migration
+
+Fresh installations and checkouts with no typed Secret resources in state need
+no migration. For state created by the former `kubernetes_secret_v1.installation`
+configuration, bootstrap and import stop before applying anything.
+
+Privately back up the Argo CD root's state and inspect its tracked addresses:
+
+```sh
+umask 077
+terraform -chdir=terraform/argocd state list
+```
+
+For each listed `kubernetes_secret_v1.installation[...]` address, run
+`terraform -chdir=terraform/argocd state rm 'EXACT_ADDRESS'`, using that full
+address in single quotes. This forgets the old Terraform binding; it does not
+delete the Kubernetes Secret. Do not apply between forgetting and importing.
+Then run `python3 scripts/import-platform.py` to import those same objects as
+`kubectl_manifest.installation[...]`, and review both plans before applying.
+Never delete or recreate the Secrets to change provider ownership.
+
+The Secret workaround was exercised on a local cluster: create an empty Secret,
+populate a dummy credential outside Terraform, verify a no-change plan, then
+apply a metadata change and verify the credential survived and neither plan
+displayed its value. The ordinary validators do not run this live check.
 
 ## Local configuration and state
 
@@ -159,4 +189,5 @@ Kubernetes planning, import, field ownership, or controller readiness. Validate
 those against the selected cluster through reviewed plans and readiness checks.
 
 References: [Kubernetes provider planning and import](https://registry.terraform.io/providers/hashicorp/kubernetes/3.4.0/docs/resources/manifest),
+[kubectl provider Secret redaction and ignored fields](https://registry.terraform.io/providers/alekc/kubectl/3.0.1/docs/resources/kubectl_manifest),
 [Terraform local backend](https://developer.hashicorp.com/terraform/language/backend/local).
