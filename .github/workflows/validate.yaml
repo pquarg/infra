@@ -11,7 +11,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 10
     env:
       KUBECTL_VERSION: v1.36.1
       KUBECONFORM_VERSION: v0.8.0
@@ -20,6 +20,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.1"
 
       - name: Install pinned validation tools
         run: |
@@ -35,5 +40,5 @@ jobs:
           chmod +x kubectl kubeconform
           echo "$tool_dir" >> "$GITHUB_PATH"
 
-      - name: Validate Argo CD installation and shared platform
+      - name: Validate Terraform, helpers, Argo CD installation and shared platform
         run: ./scripts/validate.sh

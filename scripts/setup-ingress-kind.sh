@@ -20,6 +20,8 @@ fi
 
 cluster="${1:-argocd-postgres}"
 context="kind-${cluster}"
+kubeconfig="${INFRA_LOCAL_KUBECONFIG:-$HOME/.kube/config}"
+kube=(kubectl "--kubeconfig=$kubeconfig" "--context=$context")
 nodes="$(kind get nodes --name "$cluster")"
 
 if [[ -z "$nodes" ]]; then
@@ -43,11 +45,11 @@ if [[ "$direct_mapping" != true ]]; then
 fi
 
 printf 'Waiting for the shared Traefik controller managed by Argo CD\n'
-kubectl --context="$context" --namespace=argocd wait \
+"${kube[@]}" --namespace=argocd wait \
   --for=jsonpath='{.status.sync.status}'=Synced application/traefik --timeout=180s
-kubectl --context="$context" --namespace=traefik wait \
+"${kube[@]}" --namespace=traefik wait \
   --for=jsonpath='{.spec.type}'=NodePort service/traefik --timeout=180s
-kubectl --context="$context" --namespace=traefik \
+"${kube[@]}" --namespace=traefik \
   rollout status deployment/traefik --timeout=180s
 
 printf 'Shared ingress is ready. Each app supplies its own hostname and Ingress through Git.\n'

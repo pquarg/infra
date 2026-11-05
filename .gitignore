@@ -5,3 +5,12 @@
 /kind/**/*.local.yaml
 **/*-secrets.yaml
 **/secrets.yaml
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+.terraform.tfstate.lock.info
+/.generated/
+__pycache__/

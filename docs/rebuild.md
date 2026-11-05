@@ -5,6 +5,8 @@ Only follow this procedure when deliberately replacing the local platform.
 For an existing installation adopting the repository split, use
 [the ownership transfer](../../deploy-local/docs/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
 instead; it needs no cluster rebuild or database move.
+For adoption of Terraform on an existing installation, follow
+[the import procedure](terraform.md#adopt-an-existing-installation) instead.
 
 ## Preserve the deployment first
 
@@ -29,6 +31,11 @@ Review `kind/cluster.local.yaml` before removal. It must use the preserved
 absolute storage parent, `/mnt`, the storage node label and
 `127.0.0.1:80` → `30080` port mapping from `kind/cluster.example.yaml`.
 Free port 80, including any obsolete ingress gateway container.
+Privately back up both `terraform/argocd/terraform.tfstate` and
+`terraform/platform/terraform.tfstate` and their backups if present. These files
+may contain Argo CD credentials. Do not run `terraform destroy` for a rebuild;
+the configuration prevents routine platform destruction and does not own the
+kind cluster or laptop database files.
 
 When the backup, clean shutdown and retained files are confirmed:
 
@@ -37,6 +44,13 @@ kind delete cluster --name argocd-postgres
 ./scripts/create-cluster.sh
 ./scripts/bootstrap-kind.sh
 ```
+
+Keep the existing local Terraform state for this same named cluster. After
+rendering, the first apply refreshes against the replacement cluster and proposes
+recreating missing Argo CD objects. Only plan/apply `terraform/platform` after the
+CRDs have been restored. Review both plans; there is no automatic approval.
+If instead the cluster survived but the Terraform state was lost, import it
+rather than treating it as a new installation.
 
 Reconnect the deployment Git credential in Argo CD. Before registering
 `deploy-local`, provision app Secrets using the original database passwords,

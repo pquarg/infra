@@ -3,11 +3,18 @@ set -euo pipefail
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
-for required_command in kubectl kubeconform; do
+for required_command in kubectl kubeconform terraform python3; do
   if ! command -v "$required_command" > /dev/null; then
     printf 'Error: %s is required; see README.md.\n' "$required_command" >&2
     exit 1
   fi
+done
+python3 -B -m unittest discover -s tests
+python3 scripts/render-platform.py
+terraform fmt -check -recursive terraform
+for stage in argocd platform; do
+  terraform -chdir="terraform/$stage" init -backend=false -input=false -lockfile=readonly
+  terraform -chdir="terraform/$stage" validate
 done
 for script in scripts/*.sh; do
   bash -n "$script"
