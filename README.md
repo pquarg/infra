@@ -1,7 +1,7 @@
 # AWS infrastructure
 
 This independent repository owns the AWS foundation, shared Kubernetes platform
-and CloudFront edge for `deploy-aws`. Account `245361883993`, profile `aws-project`,
+and CloudFront edge for `gitops`. Account `245361883993`, profile `aws-project`,
 Region `eu-north-1`. CloudFront is global; its log delivery uses `us-east-1`.
 These files describe desired configuration, not current live health.
 
@@ -23,6 +23,10 @@ root is no longer an executable Terraform root. Existing installations must
 complete [state migration](docs/state-migration.md) before any stage apply.
 
 ## Setup and changes
+
+Application deployments now use [one GitOps repository](../gitops/README.md).
+Existing registrations follow [repository cutover](../gitops/docs/repository-migration.md);
+this consolidation requires no infrastructure apply.
 
 Install Terraform `1.17.x` (CI `1.17.1`), AWS CLI v2, kubectl, Python 3 and Node.js
 for tests. Use the existing AWS profile and authenticate it separately.
@@ -57,7 +61,7 @@ The prerequisite checker verifies the Kubernetes endpoint and Pod Identity agent
 association. Values/pins live in `argocd/` and `load-balancer-controller/`, matching
 local's controller values-file layout.
 
-Follow [deploy-aws setup](../deploy-aws/docs/setup.md) to provision credentials,
+Follow [gitops setup](../gitops/docs/aws/setup.md) to provision credentials,
 register apps and manually sync them. Wait for an Active ALB with healthy targets
 before edge (the checker refuses a missing or unhealthy origin):
 
@@ -101,5 +105,5 @@ runs, then platform, then foundation. Backend deletion is a separately selected
 last scope. Legacy one-state teardown records cannot be resumed by this version.
 
 Read [architecture](docs/architecture.md), [state migration](docs/state-migration.md),
-[full deployment walkthrough](../deploy-aws/docs/deploy-from-scratch.md) and
-[public access verification](../deploy-aws/docs/public-access.md) before live work.
+[full deployment walkthrough](../gitops/docs/aws/deploy-from-scratch.md) and
+[public access verification](../gitops/docs/aws/public-access.md) before live work.

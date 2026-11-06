@@ -3,7 +3,7 @@
 This is a historical cleanup record for the former single-state layout.
 For current stage-aware removal, scopes and retention decisions use
 [teardown/rebuild](docs/teardown.md) and the
-[manual retention runbook](../deploy-aws/docs/teardown.md). Do not run the old
+[manual retention runbook](../gitops/docs/aws/teardown.md). Do not run the old
 root/target commands below. State migration is separate from cleanup.
 
 This guide describes how to remove resources defined by this deployment. It
@@ -25,7 +25,7 @@ supports read-only AWS preflight with `--check`, unattended confirmation with
 `--yes`, and recovery of an interrupted run with `--resume DIRECTORY`. See its
 runbook for prerequisites, scope, and recovery; it is not a project-wide sweeper.
 
-Use the [manual teardown walkthrough](../deploy-aws/docs/teardown.md) when you
+Use the [manual teardown walkthrough](../gitops/docs/aws/teardown.md) when you
 want database/log retention choices and to keep the state backend by default.
 Its keep-logs branch retains the bucket outside root state and documents
 importing it on a later rebuild. The order below describes this manual procedure.
@@ -76,7 +76,7 @@ up the controller-owned ALB but does not manage its lifecycle.
 ## State and rebuilding
 
 If the backend is retained, initialize against the existing state bucket and
-follow the [staged deployment guide](../deploy-aws/docs/deploy-from-scratch.md).
+follow the [staged deployment guide](../gitops/docs/aws/deploy-from-scratch.md).
 Reconcile any deliberately retained resources with the configuration before
 planning their recreation.
 

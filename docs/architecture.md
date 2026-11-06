@@ -2,7 +2,7 @@
 
 Terraform creates the foundation, installs shared software with Helm and adds
 CloudFront after the app creates its private ALB. Argo CD reads application
-manifests from `deploy-aws`. These repositories remain independent.
+manifests from `gitops`. These repositories remain independent.
 
 ```text
 Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → private RDS
@@ -15,7 +15,7 @@ Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → p
 | Backend bootstrap | [`bootstrap/`](../bootstrap/) owns only the protected S3 state bucket |
 | Foundation | [`terraform/foundation/`](../terraform/foundation/) owns VPC/subnets/NAT, EKS/workers/add-ons, RDS, controller IAM/policy/Pod Identity and frontend SG/rules |
 | Platform | [`terraform/platform/`](../terraform/platform/) owns real Helm releases `argocd` and `aws-load-balancer-controller` |
-| App GitOps | `deploy-aws` owns ApplicationSet, Deployment, Service, ConfigMaps, migration Job and Ingress; app sync remains manual |
+| App GitOps | `gitops` owns ApplicationSet, Deployment, Service, ConfigMaps, migration Job and Ingress; app sync remains manual |
 | Load balancer controller | Owns the app ALB, target groups and backend networking; Terraform only looks up the ALB |
 | Edge | [`terraform/edge/`](../terraform/edge/) owns CloudFront origin/distribution/functions/headers/log delivery and the log bucket |
 | Credential provisioning | App database login, database Secret, GHCR Secret and Argo CD Git credential stay outside Terraform/app Git |
@@ -65,7 +65,7 @@ remains pinned in [`policies/`](../policies/); functions/tests remain at the roo
 
 1. Ensure the backend exists, then review/apply a full foundation plan.
 2. Verify endpoint, nodes and Pod Identity prerequisites; review/apply platform.
-3. Follow `deploy-aws` credential/setup steps, register `aws-root`, manually sync
+3. Follow `gitops` credential/setup steps, register `aws-root`, manually sync
    `aws-myfastapiapp` including its migration hook.
 4. Wait for an Active controller-created ALB with healthy targets, then review/
    apply edge. Verify HTTPS, app/database authentication, address restrictions and

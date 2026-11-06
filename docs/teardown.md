@@ -4,7 +4,7 @@ Destructive work requires a separately chosen scope. No teardown is a validation
 check. The staged command intentionally deletes runtime resources, **all this
 lab database's snapshots/backups**, and CloudFront access logs. It retains the
 state backend by default. For data/log retention use the
-[manual deployment runbook](../../deploy-aws/docs/teardown.md) instead.
+[manual deployment runbook](../../gitops/docs/aws/teardown.md) instead.
 
 ```sh
 # Read-only preflight/inventory; writes private local artifacts only.
@@ -81,7 +81,7 @@ restore remote state or a deleted database.
 ## Rebuild after deleting the backend
 
 If the backend survived, initialize each root against its existing key and follow
-[the deployment walkthrough](../../deploy-aws/docs/deploy-from-scratch.md). Do not
+[the deployment walkthrough](../../gitops/docs/aws/deploy-from-scratch.md). Do not
 use consumed plans or invent fresh local state over an existing bucket/state.
 If the backend was explicitly removed, create a new private local bootstrap copy:
 
