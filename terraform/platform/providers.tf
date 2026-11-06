@@ -1,0 +1,17 @@
+provider "helm" {
+  kubernetes = {
+    host                   = data.aws_eks_cluster.selected.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.selected.certificate_authority[0].data)
+
+    exec = {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args = [
+        "eks", "get-token",
+        "--cluster-name", var.cluster_name,
+        "--region", "eu-north-1",
+        "--profile", "aws-project",
+      ]
+    }
+  }
+}

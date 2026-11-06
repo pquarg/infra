@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Remove this learning deployment, its recovery data, logs and state backend.
+"""Remove this learning deployment, recovery data and logs; optionally its backend.
 
 Only Python's standard library is used. Run --help before use. AWS deletion is
 intentionally not part of the test suite; subprocesses are replaced by fakes.
@@ -25,7 +25,13 @@ CLUSTER = "deployment-project-dev"
 DATABASE = "deployment-project-dev-postgres"
 STATE_BUCKET = f"deployment-project-tfstate-{PROJECT}-{REGION}"
 LOG_BUCKET = f"deployment-project-cf-logs-{PROJECT}-{REGION}"
-EDGE_FILES = ("cloudfront.tf", "cloudfront-origin.tf", "cloudfront-logs.tf")
+STATE_KEYS = {
+    "foundation": "dev/terraform.tfstate",
+    "platform": "dev/platform/terraform.tfstate",
+    "edge": "dev/edge/terraform.tfstate",
+}
+RECORD_VERSION = 2
+PLATFORM_ADDRESSES = {"helm_release.argocd", "helm_release.load_balancer_controller"}
 SETTINGS = {
     "aws_db_instance.postgres": {
         "deletion_protection", "skip_final_snapshot", "delete_automated_backups",
@@ -52,6 +58,25 @@ def edge_address(address):
     return address.startswith(("aws_cloudfront_", "aws_cloudwatch_log_delivery")) or (
         address.startswith("aws_s3_bucket") and address.endswith(".cloudfront_logs")
     )
+
+
+def validate_stage_states(states):
+    identities = set()
+    for stage, state in states.items():
+        for resource in managed(state):
+            address = resource.get("module", "")
+            address = (address + "." if address else "") + resource["type"] + "." + resource["name"]
+            expected = ("platform" if address in PLATFORM_ADDRESSES else
+                        "edge" if edge_address(address) else "foundation")
+            if stage != expected or address == "aws_s3_bucket.terraform_state":
+                raise Failure(f"Unexpected {address} in {stage}; finish state migration first.")
+            for instance in resource.get("instances", []):
+                identifier = instance.get("attributes", {}).get("id")
+                if identifier:
+                    identity = (resource["type"], identifier)
+                    if identity in identities:
+                        raise Failure(f"Duplicate managed identity: {identity}; repair ownership first.")
+                    identities.add(identity)
 
 
 def read_only_fields(schema):
@@ -83,7 +108,14 @@ def check_plan(plan, phase, schemas=None):
                 continue
         if phase == "edge" and actions == ["delete"] and edge_address(address):
             continue
-        if phase == "destroy" and actions == ["delete"]:
+        if phase == "platform" and actions == ["delete"] and address in PLATFORM_ADDRESSES:
+            continue
+        if (phase == "foundation" and actions == ["delete"] and not edge_address(address)
+                and not address.startswith("helm_release.")
+                and address != "aws_s3_bucket.terraform_state"):
+            continue
+        if (phase == "backend-destroy" and actions == ["delete"]
+                and address.startswith("aws_s3_bucket") and address.endswith(".terraform_state")):
             continue
         if (phase == "backend-settings" and actions == ["update"]
                 and address == "aws_s3_bucket.terraform_state"):
@@ -119,16 +151,25 @@ def copy_config(source, destination, backend=True):
 
 
 class Teardown:
-    def __init__(self, directory):
+    def __init__(self, directory, delete_backend=False):
         self.directory = directory
-        self.runtime = directory / "runtime"
+        self.stages = {name: directory / "terraform" / name for name in STATE_KEYS}
+        self.foundation = self.stages["foundation"]
+        self.platform = self.stages["platform"]
+        self.edge = self.stages["edge"]
         self.bootstrap = directory / "bootstrap-remote"
         self.local = directory / "bootstrap-local"
         self.record_path = directory / "progress.json"
         self.schemas = None
         self.record = json.loads(self.record_path.read_text()) if self.record_path.exists() else {
-            "project": PROJECT, "completed": [],
+            "version": RECORD_VERSION, "project": PROJECT, "completed": [],
+            "state_keys": STATE_KEYS, "delete_backend": delete_backend,
         }
+        if self.record.get("version") != RECORD_VERSION or self.record.get("state_keys") != STATE_KEYS:
+            raise Failure("Legacy or incompatible teardown record. Use its matching old implementation "
+                          "or an explicitly validated conversion; do not resume it as a staged teardown.")
+        if self.record.get("delete_backend") != delete_backend:
+            raise Failure("Resume must use the original --delete-backend scope.")
         if self.record.get("project") != PROJECT:
             raise Failure("Recovery record targets a different AWS project.")
         self.env = {k: v for k, v in os.environ.items()
@@ -178,9 +219,17 @@ class Teardown:
             self.save()
 
     def initialize(self):
-        copy_config(ROOT, self.runtime)
+        for name in ("functions", "policies", "argocd", "load-balancer-controller"):
+            shutil.copytree(ROOT / name, self.directory / name, dirs_exist_ok=True)
+        (self.directory / "config").mkdir(mode=0o700, exist_ok=True)
+        if not (ROOT / "config/operator.tfvars").is_file():
+            raise Failure("Prepare config/operator.tfvars before teardown; see README.md.")
+        shutil.copy2(ROOT / "config/operator.tfvars", self.directory / "config/operator.tfvars")
+        for name, directory in self.stages.items():
+            source = ROOT / "terraform" / name
+            copy_config(source, directory)
+            self.init_tf(directory, source)
         copy_config(ROOT / "bootstrap", self.bootstrap)
-        self.init_tf(self.runtime, ROOT)
         self.init_tf(self.bootstrap, ROOT / "bootstrap")
 
     def init_tf(self, directory, source):
@@ -209,6 +258,17 @@ class Teardown:
         self.tf(directory, "init", "-input=false", "-lockfile=readonly", *options)
 
     def state(self, directory, filename):
+        stage = next((name for name, path in self.stages.items() if path == directory), None)
+        if stage:
+            metadata = self.aws("s3api", "head-object", "--bucket", STATE_BUCKET,
+                                "--key", STATE_KEYS[stage], "--expected-bucket-owner", PROJECT,
+                                absent=("404",))
+            if metadata is None:
+                state = {"resources": []}
+                (self.directory / filename).write_text(json.dumps(state))
+                return state
+            self.record.setdefault("state_versions", {})[filename] = metadata.get("VersionId")
+            self.save()
         text = self.tf(directory, "state", "pull", capture=True)
         state = json.loads(text)
         (self.directory / filename).write_text(text)
@@ -217,7 +277,10 @@ class Teardown:
     def inventory(self):
         self.aws("s3api", "head-bucket", "--bucket", STATE_BUCKET,
                  "--expected-bucket-owner", PROJECT)
-        state = self.state(self.runtime, "runtime-before.tfstate")
+        states = {name: self.state(directory, f"{name}-before.tfstate")
+                  for name, directory in self.stages.items()}
+        validate_stage_states(states)
+        state = {"resources": [r for snapshot in states.values() for r in snapshot.get("resources", [])]}
         bootstrap = self.state(self.bootstrap, "bootstrap-before.tfstate")
         buckets = attributes(bootstrap, "aws_s3_bucket")
         if [b["bucket"] for b in buckets] != [STATE_BUCKET] or any(
@@ -273,8 +336,10 @@ class Teardown:
     def plan_apply(self, directory, name, phase, *options):
         plan = self.directory / f"{name}.tfplan"
         self.tf(directory, "validate")
+        variables = [f"-var-file={self.directory / 'config/operator.tfvars'}"] if directory in {
+            self.foundation, self.edge} else []
         self.tf(directory, "plan", "-input=false", "-lock-timeout=5m",
-                f"-out={plan}", *options)
+                f"-out={plan}", *variables, *options)
         description = json.loads(self.tf(directory, "show", "-json", str(plan), capture=True))
         if self.schemas is None:
             providers = json.loads(self.tf(directory, "providers", "schema", "-json", capture=True))
@@ -283,27 +348,29 @@ class Teardown:
         self.tf(directory, "apply", "-input=false", "-lock-timeout=5m", str(plan))
 
     def settings(self):
-        replace_setting(self.runtime / "database.tf", "prevent_destroy", "true", "false")
-        replace_setting(self.runtime / "database.tf", "deletion_protection", "true", "false")
-        replace_setting(self.runtime / "database.tf", "skip_final_snapshot", "false", "true")
-        replace_setting(self.runtime / "database.tf", "delete_automated_backups", "false", "true")
-        # On retry after edge removal the log resource/config is already gone.
-        log_config = self.runtime / "cloudfront-logs.tf"
-        if log_config.exists():
-            replace_setting(log_config, "force_destroy", "false", "true")
-        state = self.state(self.runtime, "runtime-current.tfstate")
-        targets = [f"-target={r['type']}.{r['name']}" for r in managed(state)
-                   if f"{r['type']}.{r['name']}" in SETTINGS]
-        if targets:
-            # Settings only: targeting avoids applying pending viewer-IP changes.
-            self.plan_apply(self.runtime, "deletion-settings", "settings", *targets)
+        for name, old, new in (("prevent_destroy", "true", "false"),
+                               ("deletion_protection", "true", "false"),
+                               ("skip_final_snapshot", "false", "true"),
+                               ("delete_automated_backups", "false", "true")):
+            replace_setting(self.foundation / "database.tf", name, old, new)
+        replace_setting(self.edge / "cloudfront-logs.tf", "force_destroy", "false", "true")
+        for stage in ("foundation", "edge"):
+            directory = self.stages[stage]
+            state = self.state(directory, f"{stage}-current.tfstate")
+            targets = [f"-target={r['type']}.{r['name']}" for r in managed(state)
+                       if f"{r['type']}.{r['name']}" in SETTINGS and not r.get("module")]
+            if targets:
+                self.plan_apply(directory, f"{stage}-deletion-settings", "settings", *targets)
+
+    def destroy_stage(self, stage):
+        directory = self.stages[stage]
+        if managed(self.state(directory, f"{stage}-before-destroy.tfstate")):
+            self.plan_apply(directory, f"destroy-{stage}", stage, "-destroy")
+        if managed(self.state(directory, f"{stage}-after.tfstate")):
+            raise Failure(f"Managed {stage} resources remain in Terraform state.")
 
     def remove_edge(self):
-        for filename in EDGE_FILES:
-            (self.runtime / filename).unlink(missing_ok=True)
-        state = self.state(self.runtime, "runtime-before-edge.tfstate")
-        if any(edge_address(f"{r['type']}.{r['name']}") for r in managed(state)):
-            self.plan_apply(self.runtime, "remove-edge", "edge")
+        self.destroy_stage("edge")
         self.verify_edge()
 
     def verify_edge(self):
@@ -334,7 +401,15 @@ class Teardown:
         selected = [c for c in controllers if c["metadata"]["name"] in {
             "argocd-application-controller", "argocd-applicationset-controller"}]
         if not selected:
-            raise Failure("Cannot find Argo CD controllers; inspect reconciliation before continuing.")
+            # Foundation-only installs may never have had a platform. Proceed only
+            # when neither Kubernetes requests nor AWS load balancers need cleanup.
+            resources = json.loads(self.kube("get", "ingresses,services", "-A", "-o", "json"))["items"]
+            requests = [r for r in resources if r["kind"] == "Ingress"
+                        or r.get("spec", {}).get("type") == "LoadBalancer"]
+            if requests or not self.no_load_balancers():
+                raise Failure("No Argo CD controllers but load balancer resources remain; repair cleanup first.")
+            self.remove_backend_groups()
+            return
         self.record.setdefault("argocd_replicas", {
             f"{c['kind'].lower()}/{c['metadata']['name']}": c["spec"].get("replicas", 1)
             for c in selected
@@ -348,6 +423,12 @@ class Teardown:
                 self.kube("-n", "argocd", "get", "pods", "-l", selector, "-o", "json")
             )["items"], seconds=180)
         resources = json.loads(self.kube("get", "ingresses,services", "-A", "-o", "json"))["items"]
+        if not any(r["kind"] == "Ingress" or r.get("spec", {}).get("type") == "LoadBalancer"
+                   for r in resources) and self.no_load_balancers():
+            self.remove_backend_groups()
+            return
+        self.kube("-n", "kube-system", "rollout", "status",
+                  "deployment/aws-load-balancer-controller", "--timeout=300s")
         for r in resources:
             if r["kind"] == "Ingress" or r.get("spec", {}).get("type") == "LoadBalancer":
                 self.kube("-n", r["metadata"]["namespace"], "delete", r["kind"],
@@ -392,11 +473,6 @@ class Teardown:
                 self.aws("ec2", "revoke-security-group-ingress", "--group-id", rule["GroupId"],
                          "--security-group-rule-ids", rule["SecurityGroupRuleId"])
             self.aws("ec2", "delete-security-group", "--group-id", identifier)
-
-    def destroy_runtime(self):
-        self.plan_apply(self.runtime, "destroy-runtime", "destroy", "-destroy")
-        if managed(self.state(self.runtime, "runtime-after.tfstate")):
-            raise Failure("Managed runtime resources remain in Terraform state.")
 
     def recovery_data(self):
         db = self.aws("rds", "describe-db-instances", "--db-instance-identifier", DATABASE,
@@ -472,8 +548,9 @@ class Teardown:
     def local_backend(self):
         # Take a fresh snapshot before switching to an isolated LOCAL backend.
         # Never delete the bucket while the Terraform performing deletion uses S3.
-        if managed(self.state(self.runtime, "runtime-before-backend-retirement.tfstate")):
-            raise Failure("Runtime resources reappeared; refusing state backend retirement.")
+        for name, directory in self.stages.items():
+            if managed(self.state(directory, f"{name}-before-backend-retirement.tfstate")):
+                raise Failure(f"{name} resources reappeared; refusing state backend retirement.")
         state = self.state(self.bootstrap, "bootstrap-final-remote.tfstate")
         inventory = self.record["inventory"]
         if (state["serial"] != inventory["bootstrap_serial"]
@@ -486,7 +563,7 @@ class Teardown:
         self.init_tf(self.local, self.bootstrap)
 
     def destroy_backend(self):
-        self.plan_apply(self.local, "destroy-backend", "destroy", "-destroy")
+        self.plan_apply(self.local, "destroy-backend", "backend-destroy", "-destroy")
         if managed(self.state(self.local, "bootstrap-after.tfstate")):
             raise Failure("Managed bootstrap resources remain in local state.")
 
@@ -498,9 +575,12 @@ class Teardown:
         self.step("deletion settings", self.settings)
         self.step("remove CloudFront and logs", self.remove_edge)
         self.step("pause GitOps and remove load balancers", self.remove_ingresses)
-        self.step("destroy runtime", self.destroy_runtime)
+        self.step("destroy platform", lambda: self.destroy_stage("platform"))
+        self.step("destroy foundation", lambda: self.destroy_stage("foundation"))
         self.step("delete database recovery data", self.recovery_data)
         self.step("verify runtime removal", self.verify_runtime)
+        if not self.record["delete_backend"]:
+            return
         self.step("switch bootstrap to local state", self.local_backend)
         self.step("permit state bucket emptying", lambda: self.plan_apply(
             self.local, "backend-settings", "backend-settings"))
@@ -510,6 +590,8 @@ class Teardown:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--delete-backend", action="store_true",
+                        help="also permanently delete the versioned state backend as the final step")
     parser.add_argument("--yes", action="store_true", help="skip the initial typed project confirmation")
     parser.add_argument("--check", action="store_true", help="read-only AWS preflight; do not plan/apply or delete")
     parser.add_argument("--resume", type=Path, metavar="DIRECTORY", help="resume an interrupted run from its private record")
@@ -532,13 +614,14 @@ def main():
         if args.resume and not (directory / "progress.json").is_file():
             parser.error("Resume directory must contain progress.json")
         directory.mkdir(mode=0o700, exist_ok=True)
-        teardown = Teardown(directory)
+        teardown = Teardown(directory, delete_backend=args.delete_backend)
         identity = teardown.aws("sts", "get-caller-identity")
         if identity["Account"] != PROJECT:
             raise Failure(f"Wrong AWS project: {identity['Account']}; expected {PROJECT}.")
         print(f"AWS project {PROJECT}; profile {PROFILE}; Region {REGION}.\n"
               "This deletes the deployment, ALL its database backups/snapshots, access logs,\n"
-              "and the versioned Terraform state bucket. No AWS recovery copy is retained.\n"
+              + ("and the versioned state bucket. No AWS recovery copy is retained.\n"
+                 if args.delete_backend else "The versioned state backend is retained.\n") +
               f"Private local recovery record: {directory}", flush=True)
         try:
             teardown.step("initialize private configuration", teardown.initialize)
@@ -555,12 +638,14 @@ def main():
                 if input(f"Type {PROJECT} to permanently delete all of the above: ").strip() != PROJECT:
                     raise Failure("Confirmation did not match; no deletion started.")
             teardown.execute()
-            print("\nTeardown complete: recorded deployment resources, recovery data, logs and state bucket removed.\n"
+            print("\nTeardown complete: recorded deployment resources, recovery data and logs removed.\n"
+                  + ("State backend removed.\n" if args.delete_backend else "State backend retained.\n") +
                   "AWS service-linked roles shared by services and resources outside this deployment are not deleted.\n"
                   f"Private local records remain in {directory}; protect or securely remove them when no longer needed.")
         except (Failure, KeyboardInterrupt):
             print(f"\nStopped. Source configuration is unchanged. Argo CD may remain paused.\n"
-                  f"Fix the reported blocker, then resume:\n{ROOT / 'scripts/teardown-all.py'} --resume {directory}\n"
+                  f"Fix the reported blocker, then resume:\n{ROOT / 'scripts/teardown-all.py'} "
+                  f"{'--delete-backend ' if args.delete_backend else ''}--resume {directory}\n"
                   "Do not run a normal Terraform apply during partial teardown.", file=sys.stderr)
             raise
 

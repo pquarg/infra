@@ -1,165 +1,105 @@
-# Deployment project infrastructure
+# AWS infrastructure
 
-Terraform configuration for a small FastAPI deployment in AWS project
-`245361883993`, using profile `aws-project` and selected Region `eu-north-1`
-(Stockholm). Regional resources are configured in Stockholm; CloudFront is
-global and its standard-log delivery configuration uses `us-east-1` as required.
+This independent repository owns the AWS foundation, shared Kubernetes platform
+and CloudFront edge for `deploy-aws`. Account `245361883993`, profile `aws-project`,
+Region `eu-north-1`. CloudFront is global; its log delivery uses `us-east-1`.
+These files describe desired configuration, not current live health.
 
-These docs describe the configuration and deployment procedures. They apply
-whether the infrastructure is running, partially deployed, or removed; they do
-not assert that any AWS resource currently exists.
+The request path is client → CloudFront → private controller-owned ALB → FastAPI
+on EKS → RDS PostgreSQL. The load balancer controller creates the ALB from an app
+Ingress; Terraform never owns that ALB or its targets.
 
-## Start here
+| Stage | Configuration | State key |
+| --- | --- | --- |
+| Backend bootstrap | `bootstrap/` | `bootstrap/terraform.tfstate` |
+| Foundation | `terraform/foundation/`: VPC, EKS, RDS, controller IAM/Pod Identity, frontend SG/rules | `dev/terraform.tfstate` |
+| Platform | `terraform/platform/`: Argo CD and load balancer controller Helm releases | `dev/platform/terraform.tfstate` |
+| Edge | `terraform/edge/`: ALB lookup, CloudFront, functions and access logs | `dev/edge/terraform.tfstate` |
 
-Read [How this repository works](docs/architecture.md) for the request flow,
-component ownership, repository map, and deployment lifecycle.
+All keys use the existing protected/versioned S3 bucket
+`deployment-project-tfstate-245361883993-eu-north-1`, encryption and native locking.
+Provider locks and all module/chart/image pins are preserved. The repository
+root is no longer an executable Terraform root. Existing installations must
+complete [state migration](docs/state-migration.md) before any stage apply.
 
-The configured request path is:
+## Setup and changes
 
-```text
-Browser/API client → CloudFront → private ALB → FastAPI on EKS → PostgreSQL
+Install Terraform `1.17.x` (CI `1.17.1`), AWS CLI v2, kubectl, Python 3 and Node.js
+for tests. Use the existing AWS profile and authenticate it separately.
+Prepare one ignored operator configuration:
+
+```sh
+cp -n config/operator.tfvars.example config/operator.tfvars
+chmod 600 config/operator.tfvars
 ```
 
-Terraform defines the network, EKS workers, RDS database, Argo CD and load
-balancer controller installations, CloudFront, and logs. The companion
-[`deploy-aws` repository](../deploy-aws/README.md) defines the Kubernetes
-application resources. The load balancer controller creates the ALB from the
-application Ingress; Terraform looks it up rather than managing its lifecycle.
+Replace its example with your approved public IPv4 `/32` addresses. During
+migration copy existing values rather than changing restrictions. Foundation
+and edge read this same file; updating it requires reviewing/applying **both**
+stages to keep API and CloudFront restrictions identical. No passwords belong
+in it. Keep real variables, state, plans and credentials out of Git.
 
-This is a learning configuration: two small workers, one app replica, a
-single-AZ database, manual app syncs, and no WAF. Provisioned resources incur
-usage charges until removed; retained backups, logs, and state can also incur
-charges after the runtime is removed.
+With the state backend available, plan each stage in sequence:
 
-## Runbooks
+```sh
+./scripts/plan.sh foundation
+# Review saved plan before applying it:
+terraform -chdir=terraform/foundation apply stage.tfplan
+aws eks update-kubeconfig --name deployment-project-dev --profile aws-project \
+  --region eu-north-1 --alias aws-deployment-project
+./scripts/plan.sh platform --context aws-deployment-project
+terraform -chdir=terraform/platform apply stage.tfplan
+```
 
-- [Complete deployment/rebuild walkthrough](../deploy-aws/docs/deploy-from-scratch.md)
-- [Single-command complete teardown](docs/teardown.md)
-- [Cleanup order and retention choices](CLEANUP_PLAN.md)
-- [Manual teardown walkthrough](../deploy-aws/docs/teardown.md)
-- [Public access and recovery runbook](../deploy-aws/docs/public-access.md)
+Foundation needs no Kubernetes provider and no ALB. Platform discovers the
+selected EKS endpoint/CA through AWS and gets tokens through `aws eks get-token`.
+The prerequisite checker verifies the Kubernetes endpoint and Pod Identity agent/
+association. Values/pins live in `argocd/` and `load-balancer-controller/`, matching
+local's controller values-file layout.
 
-## Operator-IP restriction
+Follow [deploy-aws setup](../deploy-aws/docs/setup.md) to provision credentials,
+register apps and manually sync them. Wait for an Active ALB with healthy targets
+before edge (the checker refuses a missing or unhealthy origin):
 
-`cloudfront.tf` configures a viewer-request function that allows only the exact
-IPv4 `/32` addresses supplied through `eks_admin_cidrs` in the ignored
-`eks.auto.tfvars` file. The same list restricts public Kubernetes API access
-and all app endpoints. The function uses CloudFront's connection IP rather
-than forwarded headers; other addresses receive `403` before reaching the
-origin. CloudFront IPv6 is disabled to use the IPv4 allowlist.
+```sh
+./scripts/plan.sh edge --context aws-deployment-project
+terraform -chdir=terraform/edge apply stage.tfplan
+terraform -chdir=terraform/edge output myfastapiapp_https
+```
 
-Use [`eks.auto.tfvars.example`](eks.auto.tfvars.example) as the template for
-your private values. Deploy changes through a fresh, reviewed Terraform plan.
-After deployment, verify access from an allowed connection and rejection from
-another network, such as a phone with Wi-Fi off. See the
-[public access runbook](../deploy-aws/docs/public-access.md) for recovery steps.
-
-Anyone sharing an allowed public IP passes this network check; application
-authentication still applies. A changed ISP/VPN IPv4 requires updating the
-ignored allowlist and reviewing/applying a new plan, affecting both EKS and the
-app. IPv6-only clients cannot connect.
-
-## Terraform state
-
-Both Terraform directories are configured to use the S3 bucket
-`deployment-project-tfstate-245361883993-eu-north-1`, with encryption, native S3
-locking, and explicit profile/Region/project restrictions:
-
-| Directory | State key |
-| --- | --- |
-| `bootstrap/` | `bootstrap/terraform.tfstate` |
-| repository root | `dev/terraform.tfstate` |
-
-`bootstrap/` defines the protected, versioned state bucket separately from the
-runtime. Both checked-in backends require the bucket to exist before normal
-initialization. If it is absent, follow the
-[backend creation procedure](docs/teardown.md#rebuild-after-deleting-the-backend)
-first. Removing the runtime does not necessarily remove the backend; this
-depends on the teardown procedure and retention choices.
-
-Commit Terraform/module configuration, both provider lock files, public policy
-JSON, function code/tests, and the operator-IP example. Keep `.terraform/`, real
-`.tfvars`, state, binary plans, passwords, and private keys outside Git.
-Database application credentials and registry/Git credentials are provisioned
-through the deployment runbooks outside Terraform/app Git.
-
-## Deploying or rebuilding
-
-Ensure the state bucket exists, configure the ignored operator-IP file, and
-check the target project before planning. Follow the
-[deployment walkthrough](../deploy-aws/docs/deploy-from-scratch.md) in stages:
-
-1. Plan/apply the VPC, EKS, and RDS dependencies, using reviewed targets
-   `module.vpc`, `module.eks`, and `aws_db_instance.postgres`.
-2. Once EKS is reachable, plan/apply the two Helm releases and both app frontend
-   rule resources as a second targeted bootstrap stage. Their dependencies
-   include the frontend security group and controller IAM/Pod Identity setup.
-3. Configure the kubeconfig context and provision database, registry, and Git
-   credentials through the deployment runbooks. Set the app Ingress's frontend
-   security-group ID from Terraform outputs, publish it, register the app, and
-   perform a full manual sync including migrations.
-4. Wait for the controller-created internal ALB to become Active with Healthy
-   targets, then review a full **untargeted** root plan for the VPC origin,
-   distribution, and logging.
-5. After applying, verify health/readiness, API docs, authentication, HTTPS
-   redirects, IP restrictions, and log delivery. Run a full plan to check that
-   the deployed infrastructure matches the configuration.
-
-A full root plan cannot look up an app ALB before the application Ingress has
-created it. Targeting is a bootstrap exception; routine plans are untargeted.
-For a partial deployment, establish which stages are complete before continuing.
-
-Once deployed, use `terraform output myfastapiapp_https` from the initialized
-root directory to obtain the generated CloudFront endpoint and API docs URL.
-These values can change between deployments.
+No bootstrap `-target` sequence is needed. Review full plans for each stage.
+`--kubeconfig /absolute/file` is supported by stage checks/planning. No stage
+reads another stage's sensitive state. Inspect non-secret outputs from the
+owning roots: foundation exposes network/cluster/database/controller-role/SG
+metadata; edge exposes origin and HTTPS metadata.
 
 ## Validation and changes
 
-The function and teardown tests run locally without a deployed environment:
-
 ```sh
-node --test tests/*.test.cjs
-python3 -m unittest discover -s tests -p 'test_teardown_all.py'
+./scripts/validate.sh
+git diff --check
 ```
 
-With Terraform installed, validate configuration without initializing the S3
-backend. Initialization may download modules/providers but does not deploy
-resources:
+Validation uses temporary configuration copies, backend-disabled init and
+committed locks. It runs Terraform format/validate, shell stage safety checks,
+CloudFront function tests and teardown regressions. It downloads pinned modules/
+providers and needs internet, but no AWS credentials or live cluster. CI runs the
+same checks. Passing checks do not prove deployment or migration success.
 
-```sh
-terraform init -backend=false
-terraform validate
-terraform -chdir=bootstrap init -backend=false
-terraform -chdir=bootstrap validate
-```
+For live acceptance check controller/app health, database data/authentication,
+ALB target health, HTTPS, allowed/denied addresses and actual log receipt; finish
+with ordinary plans showing no unexpected changes. Changes to cluster/storage,
+retention or versions are separate work. No apply, destroy or state transfer is
+performed by validation.
 
-For routine changes, with the backend and deployment dependencies available
-and an active `aws-project` login, initialize the backend and generate a fresh
-plan:
+## Recovery and removal
 
-```sh
-terraform init
-terraform plan -out=infra.tfplan
-terraform show -no-color infra.tfplan
-```
+Use [teardown/rebuild](docs/teardown.md) and
+[retention choices](CLEANUP_PLAN.md). Across roots, Terraform cannot enforce
+deletion dependencies: edge must go first, then app Ingresses while the controller
+runs, then platform, then foundation. Backend deletion is a separately selected
+last scope. Legacy one-state teardown records cannot be resumed by this version.
 
-Review each plan before applying it; the operator runs applies. Generate a new
-plan after deployment, teardown, or configuration changes rather than reusing
-an earlier saved plan. Publishing these files does not deploy app code: image
-or manifest changes are released through `deploy-aws` and a full manual app sync.
-
-## Removal and retention
-
-The configuration enables RDS deletion protection, `prevent_destroy`, a required
-final snapshot, retained automated backups, and one-day backup retention. The
-log bucket has 14-day expiry and refuses deletion while nonempty by default.
-Choose retention deliberately before changing these safeguards.
-
-For complete removal of the deployment, including **all database snapshots and
-retained backups, access logs, and the Terraform state bucket/history**, follow
-the [complete teardown runbook](docs/teardown.md). Its command uses private
-configuration copies and records progress for resuming an interrupted teardown.
-
-For a teardown with database/log retention choices and a retained state backend,
-use the [cleanup plan](CLEANUP_PLAN.md) and
-[manual walkthrough](../deploy-aws/docs/teardown.md).
+Read [architecture](docs/architecture.md), [state migration](docs/state-migration.md),
+[full deployment walkthrough](../deploy-aws/docs/deploy-from-scratch.md) and
+[public access verification](../deploy-aws/docs/public-access.md) before live work.

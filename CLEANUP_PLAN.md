@@ -1,5 +1,11 @@
 # Cleanup order and retention choices
 
+This is a historical cleanup record for the former single-state layout.
+For current stage-aware removal, scopes and retention decisions use
+[teardown/rebuild](docs/teardown.md) and the
+[manual retention runbook](../deploy-aws/docs/teardown.md). Do not run the old
+root/target commands below. State migration is separate from cleanup.
+
 This guide describes how to remove resources defined by this deployment. It
 does not record deployment status. Before starting, establish which resources
 and Terraform states exist, and choose what data to retain.

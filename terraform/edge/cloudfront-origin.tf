@@ -9,8 +9,8 @@ data "aws_lb" "myfastapiapp_origin" {
         self.internal &&
         self.load_balancer_type == "application" &&
         self.ip_address_type == "ipv4" &&
-        self.vpc_id == module.vpc.vpc_id &&
-        contains(self.security_groups, aws_security_group.myfastapiapp_alb.id)
+        self.vpc_id == data.aws_eks_cluster.selected.vpc_config[0].vpc_id &&
+        contains(self.security_groups, data.aws_security_group.myfastapiapp_alb.id)
       )
       error_message = "The app origin must be the internal IPv4 ALB in this VPC with the Terraform-managed frontend group attached."
     }
@@ -37,14 +37,7 @@ resource "aws_cloudfront_vpc_origin" "myfastapiapp" {
     delete = "30m"
   }
 
-  # Preserve the origin's network access and platform controllers until the VPC
-  # origin is removed. App Ingress cleanup still needs an explicit GitOps step.
-  depends_on = [
-    aws_vpc_security_group_ingress_rule.myfastapiapp_from_cloudfront,
-    aws_vpc_security_group_egress_rule.myfastapiapp_to_workers,
-    helm_release.load_balancer_controller,
-    helm_release.argocd,
-  ]
+  # Cross-stage deletion order is enforced by scripts/teardown-all.py.
 }
 
 output "myfastapiapp_vpc_origin" {
