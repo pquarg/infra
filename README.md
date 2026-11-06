@@ -174,6 +174,10 @@ strictly. Unknown platform resource kinds still fail. CI runs the same checks.
 kind configuration is consumed by cluster creation; these checks do not validate kind YAML, CRD
 definition semantics or runtime readiness.
 
+When changing provider pins, [refresh the lock file for both macOS ARM64 and
+Linux AMD64](docs/terraform.md#maintain-provider-checksums) before committing.
+CI and bootstrap use the committed checksums with `-lockfile=readonly`.
+
 After editing `argocd/values.yaml` or `traefik/values.yaml`, review the platform plan:
 
 ```sh

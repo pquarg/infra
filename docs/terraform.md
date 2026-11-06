@@ -33,6 +33,29 @@ checks legacy/unadopted ownership **before** any apply. Helm plans do not show a
 full Kubernetes object diff; render both charts with `scripts/validate.sh` and
 inspect `helm template` output when reviewing a migration.
 
+## Maintain provider checksums
+
+The committed `terraform/platform/.terraform.lock.hcl` includes provider package
+checksums for both Apple Silicon development (`darwin_arm64`) and the GitHub
+Actions runner (`linux_amd64`). After changing a provider pin, regenerate the
+checksums for both platforms from `infra-local`:
+
+```sh
+terraform -chdir=terraform/platform providers lock \
+  -platform=darwin_arm64 -platform=linux_amd64
+```
+
+Review and commit the generated lock file alongside the provider version change.
+This command fetches checksums without applying infrastructure or changing state.
+Keep `init -lockfile=readonly` in validation and bootstrap: it requires the
+committed lock file to support the platform running Terraform. A lock file with
+only the macOS package hash can let Linux initialization finish with a warning,
+then make `terraform validate` fail with a provider checksum mismatch. The Linux
+CI validation is the regression check for this failure.
+
+See [Terraform's provider lock command](https://developer.hashicorp.com/terraform/cli/commands/providers/lock)
+for additional target platforms and checksum verification.
+
 ## Adopt an existing installation
 
 This is a separately scheduled live ownership migration, not part of ordinary
