@@ -17,7 +17,7 @@ deployment-project/
     terraform/platform/         # One local state: Argo CD and Traefik Helm releases
     scripts/                    # Create, bootstrap, readiness checks and validation
     docs/terraform.md            # Ownership, plans, state and existing-cluster adoption
-    docs/rebuild.md              # Preserve data across a planned rebuild
+    docs/rebuild.md              # Rebuild with retained data or an empty database
   deploy-local/                 # App discovery, manifests and releases
   apps/myfastapiapp/             # Application code and image build
 ```
@@ -198,7 +198,7 @@ the previous machine-specific configuration. It remains ignored and is not
 automatically selected by the scripts. Review it before reuse; do not replace
 an existing cluster or relocate data merely to match the new example.
 
-## Recovery and removal
+## Tear down and spin up again
 
 The platform stores state locally at `terraform/platform/terraform.tfstate`.
 Legacy `terraform/argocd` state is preserved until transferred and archived privately.
@@ -206,12 +206,82 @@ State, state backups, plans, legacy generated manifests and real `.tfvars` are i
 state may contain Argo CD credentials and must be kept private. There is no AWS
 provider or remote AWS backend. Back up state privately and never reuse AWS state.
 
-Follow [the rebuild guide](docs/rebuild.md) before deleting a cluster containing
-data. Laptop database directories survive cluster deletion, but Kubernetes
-objects and credentials do not. Backups and tested restoration remain app-owned.
+Both methods below remove the entire `argocd-postgres` cluster, including app
+deployments, Argo CD, Traefik and all Kubernetes Secrets. **Deleting the cluster
+does not delete the laptop database files.** Choose whether to reuse or remove
+those files before registering apps again.
+
+Do not use `terraform destroy`: kind owns the cluster, and the Terraform-managed
+Helm releases have `prevent_destroy`. Keep the platform state for this same
+named cluster; the next apply refreshes it and recreates the missing releases.
 No script here automatically deletes clusters, storage or credentials.
-Terraform-managed resources have `prevent_destroy`; routine destroy/replacement
-plans are blocked. This is not a backup or protection from manual cluster deletion.
+
+### Method 1: keep the database
+
+1. Follow [preparation and clean shutdown](docs/rebuild.md#prepare-for-either-method):
+   pause root/app auto-sync, finish migrations, stop writers, back up and verify
+   restoration, then stop PostgreSQL cleanly. Save original database credentials
+   and privately back up Terraform state.
+2. Delete the cluster:
+
+   ```sh
+   kind delete cluster --name argocd-postgres
+   ```
+
+3. Leave the laptop storage directory and `kind/cluster.local.yaml` intact.
+   Follow [startup below](#spin-up-after-either-method) using the same database
+   password, storage mount and compatible PostgreSQL major version.
+
+### Method 2: destroy the database
+
+1. Follow the same [preparation and clean shutdown](docs/rebuild.md#prepare-for-either-method).
+   Confirm that you intend to discard the app's data; keep a verified backup if
+   you may need it later.
+2. Delete the cluster:
+
+   ```sh
+   kind delete cluster --name argocd-postgres
+   ```
+
+3. Follow the app-owned [physical database removal instructions](../deploy-local/apps/myfastapiapp/postgres/reset.md#discard-the-database-after-cluster-teardown).
+   Remove only the selected app's `pgdata` directory under the configured
+   laptop storage parent. Keep the parent and other apps' data intact. Repeat
+   each app's own removal procedure if discarding multiple databases.
+4. Follow [startup below](#spin-up-after-either-method). PostgreSQL initializes
+   an empty database and the app's migration Job creates its schema. Old
+   accounts and records are gone; matching new database credentials may be used
+   in both app Secrets. Existing backup archives are not deleted by this method.
+
+### Spin up after either method
+
+Start Docker Desktop, check that port 80 is available, and review
+`kind/cluster.local.yaml`: the absolute laptop storage parent must mount at
+`/mnt`, with the storage node label and port mapping from the example. From
+`infra-local`:
+
+```sh
+./scripts/create-cluster.sh
+./scripts/bootstrap-kind.sh
+```
+
+Review and approve the combined Terraform apply for Argo CD and Traefik. If
+bootstrap reports legacy ownership, follow [adoption](docs/terraform.md#adopt-an-existing-installation)
+before continuing; do not delete state to bypass it.
+
+Before registering apps, reconnect the deployment Git credential in Argo CD,
+recreate app/database and registry Secrets, and make the selected release images
+available. Images loaded into the old kind cluster must be loaded again. Follow
+[deployment setup](../deploy-local/docs/setup.md), then from `deploy-local` run:
+
+```sh
+./scripts/bootstrap.sh --context kind-argocd-postgres
+```
+
+Argo CD deploys GitHub `main`, including automatic migrations. Root **Synced**
+only confirms registration; wait for each app's **Synced / Healthy** status and
+follow its [verification steps](../deploy-local/apps/myfastapiapp/README.md#verify-the-deployment).
+For retained data, test existing records and login before resuming traffic.
+See [the full rebuild runbook](docs/rebuild.md) for shutdown and recovery commands.
 
 References: [kind configuration](https://kind.sigs.k8s.io/docs/user/configuration/),
 [Argo CD declarative setup](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/).
