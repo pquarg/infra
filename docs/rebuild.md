@@ -5,8 +5,10 @@ Only follow this procedure when deliberately replacing the local platform.
 For an existing installation adopting the repository split, use
 [the ownership transfer](../../deploy-local/docs/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
 instead; it needs no cluster rebuild or database move.
-For adoption of Terraform on an existing installation, follow
-[the import procedure](terraform.md#adopt-an-existing-installation) instead.
+For adoption of the Helm installation on an existing cluster, follow
+[the adoption procedure](terraform.md#adopt-an-existing-installation) instead.
+An existing manifest installation must be migrated before reusing its old
+Terraform state with this bootstrap.
 
 ## Preserve the deployment first
 
@@ -45,9 +47,9 @@ kind delete cluster --name argocd-postgres
 ./scripts/bootstrap-kind.sh
 ```
 
-Keep the existing local Terraform state for this same named cluster. After
-rendering, the first apply refreshes against the replacement cluster and proposes
-recreating missing Argo CD objects. Only plan/apply `terraform/platform` after the
+Keep the existing Helm-based local Terraform state for this same named cluster.
+The first apply refreshes against the replacement cluster and proposes
+recreating the missing Argo CD release. Only plan/apply `terraform/platform` after the
 CRDs have been restored. Review both plans; there is no automatic approval.
 If instead the cluster survived but the Terraform state was lost, import it
 rather than treating it as a new installation.

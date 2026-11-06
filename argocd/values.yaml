@@ -1,0 +1,29 @@
+# Chart 10.11.0 packages Argo CD v3.5.5, matching the former manifest install.
+# Keep names used by the bootstrap scripts and deploy-local readiness checks.
+fullnameOverride: argocd
+
+crds:
+  install: true
+  keep: true
+
+# Preserve the former upstream installation's supporting images too.
+dex:
+  image:
+    repository: ghcr.io/dexidp/dex
+    tag: v2.45.1
+
+redis:
+  image:
+    repository: public.ecr.aws/docker/library/redis
+    tag: 8.2.3-alpine
+
+configs:
+  cm:
+    # Preserve the upstream manifest installation's default tracking label.
+    application.instanceLabelKey: app.kubernetes.io/instance
+
+server:
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false

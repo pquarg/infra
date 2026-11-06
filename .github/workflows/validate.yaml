@@ -16,6 +16,7 @@ jobs:
       KUBECTL_VERSION: v1.36.1
       KUBECONFORM_VERSION: v0.8.0
       KUBERNETES_VERSION: "1.36.0"
+      HELM_VERSION: v3.19.0
 
     steps:
       - name: Check out repository
@@ -37,8 +38,13 @@ jobs:
           curl -fsSLO "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/CHECKSUMS"
           sha256sum --check --ignore-missing CHECKSUMS
           tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
-          chmod +x kubectl kubeconform
+          curl -fsSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl -fsSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          sha256sum --check "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz" linux-amd64/helm
+          mv linux-amd64/helm ./helm
+          chmod +x kubectl kubeconform helm
           echo "$tool_dir" >> "$GITHUB_PATH"
 
-      - name: Validate Terraform, helpers, Argo CD installation and shared platform
+      - name: Validate Terraform, bootstrap, Argo CD chart and shared platform
         run: ./scripts/validate.sh

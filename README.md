@@ -10,12 +10,13 @@ PostgreSQL workloads, PV/PVCs, credentials, backups and migrations stay in
 ```text
 deployment-project/
   infra-local/                  # This repository
-    kind/cluster.example.yaml   # Cluster, localhost port and parent storage mount
-    argocd/install/              # Argo CD v3.5.5 and its namespace
+    kind/cluster.example.yaml    # Cluster, localhost port and parent storage mount
+    argocd/chart-version.txt     # Helm chart 10.11.0 (Argo CD v3.5.5)
+    argocd/values.yaml           # Argo CD settings
     argocd/traefik.yaml          # Shared Traefik Helm Application, chart 42.0.0
-    terraform/argocd/           # Terraform root: pinned Argo CD installation
+    terraform/argocd/            # Terraform root: Argo CD Helm release
     terraform/platform/         # Terraform root: Traefik Application registration
-    scripts/                    # Create, render, import, bootstrap and validate
+    scripts/                    # Create, bootstrap, readiness checks and validation
     docs/terraform.md            # Ownership, plans, state and existing-cluster adoption
     docs/rebuild.md              # Preserve data across a planned rebuild
   deploy-local/                 # App discovery, manifests and releases
@@ -28,26 +29,27 @@ reconciles Traefik from its pinned Helm chart. After changing platform files,
 validate and explicitly plan/apply them with Terraform; this repository has no Git-watching root
 Application. `deploy-local` supplies its own root Application for app discovery.
 
-Terraform now manages platform bootstrap to make changes reviewable as plans and
-provide local Terraform practice. It uses the existing pinned manifests rather
-than changing the Argo CD installation layout to Helm. kind remains responsible
-for cluster creation, ports and mounts; Argo CD remains responsible for the
-Traefik chart. Read [the Terraform guide](docs/terraform.md) for the two stages,
-state handling and adopting an existing installation without rebuilding it.
+Terraform installs Argo CD through its Helm provider, following the same approach
+as `infra-aws`. There is no Python rendering or import step. kind creates the
+local cluster, ports and mounts; Terraform installs Argo CD and registers
+Traefik; Argo CD installs and maintains Traefik from its chart. The two Terraform
+stages remain separate because Argo CD's Application CRD must exist before the
+Kubernetes provider can plan a Traefik Application. Read [the Terraform guide](docs/terraform.md)
+for plans, state and adopting an existing installation without rebuilding it.
 
 ## Prerequisites
 
-Install Docker Desktop (and start it), kind, kubectl, Python 3 and Terraform
-`1.17.x` (CI uses `1.17.1`). The Terraform Kubernetes provider is pinned to
-`3.4.0`. The Argo CD root also pins `alekc/kubectl` to `3.0.1` for its two
-empty bootstrap Secrets, avoiding a typed-resource metadata-formatting hang
-while preserving credential redaction. Both roots have committed provider lock
-files. The existing deployment
+Install Docker Desktop (and start it), kind, kubectl and Terraform
+`1.17.x` (CI uses `1.17.1`). The Argo CD root pins the Helm provider to `3.3.0`;
+the platform root pins the Kubernetes provider to `3.4.0`. Both roots have
+committed provider lock files. The existing deployment
 validation targets Kubernetes `1.36.0`,
 kubectl `v1.36.1`, kind `v0.33.0`; the cluster example uses kind's default node
-image. For schema validation also install kubeconform `v0.8.0`. On macOS,
-Homebrew supplies kind, kubectl and kubeconform. Internet access is required to
-download providers, images, the pinned Argo CD manifest, Helm charts and validation schemas.
+image. For validation also install Helm 3 (CI uses `v3.19.0`) and kubeconform
+`v0.8.0`. Helm CLI renders the chart for validation and is used for one-time
+adoption; normal bootstrap uses Terraform's Helm provider without the Helm CLI.
+Python is not required by this repository. Internet access is required to
+download providers, images, pinned Helm charts and validation schemas.
 
 Port `127.0.0.1:80` must be available. Docker Desktop must allow sharing the
 chosen laptop storage directory. Existing clusters should follow
@@ -85,16 +87,18 @@ UI commands below use the default; adjust their explicit contexts consistently.
 ## 2. Install Argo CD and shared ingress
 
 For an **existing Argo CD installation**, first follow
-[adoption](docs/terraform.md#adopt-an-existing-installation) and import its
-resources into local Terraform state. Do not rebuild the cluster to switch
-provisioning tools. On a fresh cluster, skip the import.
+[adoption](docs/terraform.md#adopt-an-existing-installation). A manifest-based
+installation needs a reviewed Helm ownership migration; importing a Helm release
+alone cannot convert it. Bootstrap stops if it finds legacy manifest state or an
+existing untracked Argo CD server. Do not rebuild the cluster to switch tools.
+On a fresh cluster, skip adoption.
 
 ```sh
 ./scripts/bootstrap-kind.sh
 ```
 
-This renders the pinned installation, initializes the two independent local
-Terraform roots, and asks you to review and approve an Argo CD apply. After its
+This initializes the two independent local Terraform roots and asks you to
+review and approve an Argo CD Helm apply. After its
 CRDs and controllers are ready, it asks for a separate apply registering
 `Application/traefik`, then verifies the kind port mapping and controller
 readiness. Terraform needs the Application CRD to exist before it can plan that
@@ -105,7 +109,7 @@ path. This also overrides the kubeconfig setting in both roots for the wrapper.
 The wrapper's cluster argument likewise overrides their `cluster_name` values.
 Review version differences before applying to an existing installation.
 
-To investigate without applying, use the [manual render/init/plan commands](docs/terraform.md#inspect-and-apply-manually).
+To investigate without applying, use the [manual init/plan commands](docs/terraform.md#inspect-and-apply-manually).
 
 To open the Argo CD UI, leave this running in another terminal:
 
@@ -167,16 +171,17 @@ cluster. Verify app readiness using its own deployment README.
 git diff --check
 ```
 
-Validation renders the pinned Argo CD install and Traefik Application, checks
-Terraform formatting/configuration, Python helper tests, Kubernetes/Argo CD
+Validation renders the pinned Argo CD chart and Traefik Application, checks
+Terraform formatting/configuration, Bash bootstrap safety tests, Kubernetes/Argo CD
 schemas and Bash syntax, and needs no running cluster or AWS credentials.
-Terraform initialization uses `-backend=false` and the committed provider locks;
-it downloads providers but does not create cluster resources. The
+Terraform initialization uses temporary configuration copies, `-backend=false`
+and the committed provider locks; it downloads providers without reading or
+changing existing state, local variables or working provider directories. The
 three upstream CRD definitions are explicitly skipped because the schema
 registry has no `CustomResourceDefinition` schema; the remaining installation
-resources and our Traefik Application are checked strictly. Unknown platform
-resource kinds still fail. CI runs the same checks. kind configuration is
-consumed by cluster creation; these checks do not validate kind YAML, CRD
+resources (including Helm hook Jobs) and our Traefik Application are checked
+strictly. Unknown platform resource kinds still fail. CI runs the same checks.
+kind configuration is consumed by cluster creation; these checks do not validate kind YAML, CRD
 definition semantics or runtime readiness.
 
 After editing `argocd/traefik.yaml`, review and apply only its registration:
@@ -193,9 +198,10 @@ terraform -chdir=terraform/platform apply platform.tfplan
 These manual examples use the default context; keep the two roots' ignored
 configuration consistent if selecting another cluster or kubeconfig.
 Argo CD reconciles the Helm chart. Do not also apply Terraform-owned objects
-with `kubectl apply`. Argo CD upgrades use a reviewed version change under
-`argocd/install/`, re-rendering, and an apply of `terraform/argocd`; the
-bootstrap wrapper performs this sequence too. Cluster port or mount
+with `kubectl apply`. Argo CD upgrades use a reviewed version change in
+`argocd/chart-version.txt`, validation and an apply of `terraform/argocd`.
+Settings live in `argocd/values.yaml`; Terraform reads them directly.
+The bootstrap wrapper also performs the Helm apply. Cluster port or mount
 changes require a [planned rebuild](docs/rebuild.md); editing YAML cannot update
 an existing kind node's mounts or published ports.
 
@@ -207,7 +213,7 @@ an existing cluster or relocate data merely to match the new example.
 ## Recovery and removal
 
 Each Terraform root stores `terraform.tfstate` locally in its own directory.
-State, state backups, plans, generated manifests and real `.tfvars` are ignored;
+State, state backups, plans, legacy generated manifests and real `.tfvars` are ignored;
 state may contain Argo CD credentials and must be kept private. There is no AWS
 provider or remote AWS backend. Back up state privately and never reuse AWS state.
 
