@@ -6,7 +6,7 @@ usage() {
   printf 'Default: cluster=argocd-postgres; requires an existing kind cluster.\n'
   printf 'Runs one reviewed Terraform apply: pinned Argo CD and Traefik Helm releases.\n'
   printf 'For an existing installation, first follow docs/terraform.md#adopt-an-existing-installation.\n'
-  printf 'Does not register or deploy apps from deploy-local.\n'
+  printf 'Does not register or deploy apps from gitops.\n'
 }
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   usage
@@ -87,4 +87,4 @@ terraform -chdir="$project_root/terraform/platform" apply "${terraform_args[@]}"
 "${kube[@]}" -n argocd rollout status deployment/argocd-applicationset-controller --timeout=300s
 "${kube[@]}" -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
 "$project_root/scripts/setup-ingress-kind.sh" "$cluster"
-printf 'Platform ready. Follow README.md to connect deploy-local and provision app credentials.\n'
+printf 'Platform ready. Follow README.md to connect gitops and provision app credentials.\n'

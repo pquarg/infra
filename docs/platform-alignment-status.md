@@ -1,5 +1,9 @@
 # Platform alignment implementation status
 
+> Historical alignment record. Application deployment now lives in the single
+> [GitOps repository](../../gitops/README.md); old deployment names below describe
+> the earlier layout.
+
 Configuration delivered 2026-11-06 against the
 [alignment plan](platform-alignment-plan.md). No live inventory, apply, Helm
 adoption, state transfer, cluster rebuild, database reset, destroy or Git push

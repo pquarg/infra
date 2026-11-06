@@ -2,7 +2,7 @@
 
 kind owns the cluster, node, ports and storage mounts. One local Terraform root,
 `terraform/platform`, owns real Helm releases `argocd/argocd` and `traefik/traefik`.
-Argo CD owns application resources from `deploy-local`. Terraform reads this
+Argo CD owns application resources from `gitops`. Terraform reads this
 checkout; there is no platform Git watcher, AWS provider/backend, Kubernetes
 provider or local Python requirement.
 

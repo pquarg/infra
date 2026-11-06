@@ -1,5 +1,9 @@
 # Align the local and AWS platforms
 
+> Historical alignment record. Application deployment now lives in the single
+> [GitOps repository](../../gitops/README.md); old deployment names below describe
+> the earlier layout.
+
 Status: proposed implementation plan, prepared 2026-11-06. This document does
 not authorize or perform live migration, Terraform applies, state changes,
 cluster deletion or database resets.

@@ -1,11 +1,11 @@
 # Local infrastructure
 
-Prepare the local Kubernetes platform used by the sibling `deploy-local`
+Prepare the local Kubernetes platform used by the sibling `gitops`
 repository. This is an independent Git repository. It owns the kind cluster,
 host port and storage mappings, pinned Argo CD installation, and shared Traefik
 controller. Application code lives in app repositories; app deployments,
 PostgreSQL workloads, PV/PVCs, credentials, backups and migrations stay in
-`deploy-local`.
+`gitops`.
 
 ```text
 deployment-project/
@@ -18,14 +18,14 @@ deployment-project/
     scripts/                    # Create, bootstrap, readiness checks and validation
     docs/terraform.md            # Ownership, plans, state and existing-cluster adoption
     docs/rebuild.md              # Rebuild with retained data or an empty database
-  deploy-local/                 # App discovery, manifests and releases
+  gitops/                       # Shared app bases, environment overlays and releases
   apps/myfastapiapp/             # Application code and image build
 ```
 
 Platform setup reads this checkout directly. Terraform installs both shared
 controllers through pinned Helm releases. There is no platform Git-watching
 Application and no Argo CD Application for Traefik after migration. The separate
-`deploy-local` root Application discovers apps from Git. Argo CD reconciles only
+`gitops` root Application discovers apps from Git. Argo CD reconciles only
 application deployments; a platform change takes effect after a reviewed Terraform
 apply. Read [the Terraform guide](docs/terraform.md) before adopting an existing
 installation. kind remains responsible for the cluster, ports and storage mounts.
@@ -45,7 +45,7 @@ download providers, images, pinned Helm charts and validation schemas.
 
 Port `127.0.0.1:80` must be available. Docker Desktop must allow sharing the
 chosen laptop storage directory. Existing clusters should follow
-[the repository split instructions](../deploy-local/docs/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
+[the repository split instructions](../gitops/docs/local/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
 before adopting the new ownership; creating a second cluster is unnecessary.
 
 ## 1. Configure storage and create the cluster
@@ -119,13 +119,16 @@ printf '\n'
 ```
 
 Use the replacement password if it was already changed. Under **Settings →
-Repositories**, connect `git@github.com:pquarg/deploy-local.git` with a read-only
+Repositories**, connect `git@github.com:pquarg/gitops.git` with a read-only
 Git credential usable by the `default` project. Keep the credential outside Git.
-If using another remote, change all `repoURL` values in `deploy-local`'s
-`root/staging.yaml` and `argocd/apps.yaml` to match. Git authentication is
+If using another remote, change all `repoURL` values in `gitops`'s
+`root/staging.yaml` and `argocd/local/apps.yaml` to match. Git authentication is
 separate from the app's GHCR image-pull authentication.
 
-## 3. Hand over to deploy-local
+## 3. Hand over to gitops
+
+Existing deployment registrations must follow [GitOps cutover](../gitops/docs/repository-migration.md)
+before switching from the old deployment repositories.
 
 The platform provides this contract:
 
@@ -139,17 +142,17 @@ The platform provides this contract:
 | Storage node label | `staging.local/postgres-storage: "true"` |
 | App database path | `/mnt/<app>-postgres`, with PV/PVC owned by the app |
 
-From `deploy-local`, follow [deployment setup](../deploy-local/docs/setup.md):
+From `gitops`, follow [deployment setup](../gitops/docs/local/setup.md):
 provision the app's namespace, database and registry Secrets, make its selected
 image available, validate and publish the deployment manifests, then run:
 
 ```sh
-cd ../deploy-local
-./scripts/bootstrap.sh --context kind-argocd-postgres
+cd ../gitops
+./scripts/bootstrap.sh --environment local --context kind-argocd-postgres
 ```
 
 That separate bootstrap registers `staging-root`; its ApplicationSet discovers
-`apps/*` from GitHub `main`. App sync is automatic, including database creation
+`apps/*/overlays/local` from GitHub `main`. App sync is automatic, including database creation
 and migrations, so credentials and any retained data must be ready first. The
 root no longer owns Traefik. Publishing app releases does not recreate the
 cluster. Verify app readiness using its own deployment README.
@@ -247,7 +250,7 @@ No script here automatically deletes clusters, storage or credentials.
    kind delete cluster --name argocd-postgres
    ```
 
-3. Follow the app-owned [physical database removal instructions](../deploy-local/apps/myfastapiapp/postgres/reset.md#discard-the-database-after-cluster-teardown).
+3. Follow the app-owned [physical database removal instructions](../gitops/apps/myfastapiapp/overlays/local/postgres/reset.md#discard-the-database-after-cluster-teardown).
    Remove only the selected app's `pgdata` directory under the configured
    laptop storage parent. Keep the parent and other apps' data intact. Repeat
    each app's own removal procedure if discarding multiple databases.
@@ -275,15 +278,15 @@ before continuing; do not delete state to bypass it.
 Before registering apps, reconnect the deployment Git credential in Argo CD,
 recreate app/database and registry Secrets, and make the selected release images
 available. Images loaded into the old kind cluster must be loaded again. Follow
-[deployment setup](../deploy-local/docs/setup.md), then from `deploy-local` run:
+[deployment setup](../gitops/docs/local/setup.md), then from `gitops` run:
 
 ```sh
-./scripts/bootstrap.sh --context kind-argocd-postgres
+./scripts/bootstrap.sh --environment local --context kind-argocd-postgres
 ```
 
 Argo CD deploys GitHub `main`, including automatic migrations. Root **Synced**
 only confirms registration; wait for each app's **Synced / Healthy** status and
-follow its [verification steps](../deploy-local/apps/myfastapiapp/README.md#verify-the-deployment).
+follow its [verification steps](../gitops/apps/myfastapiapp/overlays/local/README.md#verify-the-deployment).
 For retained data, test existing records and login before resuming traffic.
 See [the full rebuild runbook](docs/rebuild.md) for shutdown and recovery commands.
 

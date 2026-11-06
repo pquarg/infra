@@ -10,7 +10,7 @@ cluster `argocd-postgres` and context `kind-argocd-postgres`.
 Creating or preparing these repositories does not alter a running cluster.
 Only follow this procedure when deliberately replacing the local platform.
 For an existing installation adopting the repository split, use
-[the ownership transfer](../../deploy-local/docs/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
+[the ownership transfer](../../gitops/docs/local/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
 instead; it needs no cluster rebuild or database move.
 For adoption of the Helm installation on an existing cluster, follow
 [the adoption procedure](terraform.md#adopt-an-existing-installation) instead.
@@ -35,11 +35,11 @@ Terraform state with this bootstrap.
    data later. For `myfastapiapp`, run from `infra-local`:
 
    ```sh
-   ../deploy-local/apps/myfastapiapp/postgres/backup.sh
+   ../gitops/apps/myfastapiapp/overlays/local/postgres/backup.sh
    ```
 
    This saves a private archive outside Git and checks archive readability; it
-   does not test a restore. See the [app backup runbook](../../deploy-local/apps/myfastapiapp/README.md#back-up-and-release-a-database-change).
+   does not test a restore. See the [app backup runbook](../../gitops/apps/myfastapiapp/overlays/local/README.md#back-up-and-release-a-database-change).
    Record the original database credentials, PostgreSQL major version and
    absolute host data directory outside Git. Retained data needs the original
    credentials; Kubernetes Secrets disappear with the cluster. Preserve filled
@@ -80,7 +80,7 @@ kind delete cluster --name argocd-postgres
 
 Preserve the laptop storage parent and all app data, including `pgdata` and its
 permissions. If migrating from an older app-specific mount, follow the
-[storage upgrade](../../deploy-local/docs/repository-upgrade.md#shared-storage-at-the-next-rebuild)
+[storage upgrade](../../gitops/docs/local/repository-upgrade.md#shared-storage-at-the-next-rebuild)
 to copy the complete stopped directory into `<app>-postgres/` under the shared
 parent. Keep the original copy. Continue with [startup](#spin-up-after-either-method)
 using the original passwords and a compatible PostgreSQL major version.
@@ -96,7 +96,7 @@ kind delete cluster --name argocd-postgres
 
 Cluster deletion alone leaves all laptop database files intact. Next, follow
 each selected app's physical removal procedure, starting with
-[myfastapiapp](../../deploy-local/apps/myfastapiapp/postgres/reset.md#discard-the-database-after-cluster-teardown).
+[myfastapiapp](../../gitops/apps/myfastapiapp/overlays/local/postgres/reset.md#discard-the-database-after-cluster-teardown).
 Do this before recreating the cluster; delete only that app's data and keep
 the shared storage parent, other apps' directories and Terraform state.
 
@@ -124,14 +124,14 @@ rather than treating it as a new installation.
 
 Reconnect the deployment Git credential in Argo CD using the
 [UI/sign-in instructions](../README.md#2-install-argo-cd-and-shared-ingress).
-Before registering `deploy-local`:
+Before registering `gitops`:
 
-1. [Recreate the app namespace and database Secrets](../../deploy-local/apps/myfastapiapp/README.md#provision-credentials).
+1. [Recreate the app namespace and database Secrets](../../gitops/apps/myfastapiapp/overlays/local/README.md#provision-credentials).
    For method 1, reuse the original passwords and keep the PostgreSQL major
    version compatible with the retained files. For method 2, you may use new
    matching credentials in both app/database Secrets.
-2. Recreate [registry credentials](../../deploy-local/docs/credentials.md#registry-authentication)
-   and [make the selected images available](../../deploy-local/apps/myfastapiapp/README.md#make-the-app-image-available).
+2. Recreate [registry credentials](../../gitops/docs/local/credentials.md#registry-authentication)
+   and [make the selected images available](../../gitops/apps/myfastapiapp/overlays/local/README.md#make-the-app-image-available).
    Images loaded into the deleted kind cluster must be loaded again.
 3. Confirm retained data is mounted at `/mnt/<app>-postgres`, or that the
    selected app directory is empty for method 2. Any changed app manifests must
@@ -140,13 +140,13 @@ Before registering `deploy-local`:
 Register app discovery:
 
 ```sh
-cd ../deploy-local
-./scripts/bootstrap.sh --context kind-argocd-postgres
+cd ../gitops
+./scripts/bootstrap.sh --environment local --context kind-argocd-postgres
 ```
 
 This starts automatic sync and migrations. Root **Synced** only confirms
 registration. Wait for each app's **Synced / Healthy** status and follow its
-[verification procedure](../../deploy-local/apps/myfastapiapp/README.md#verify-the-deployment).
+[verification procedure](../../gitops/apps/myfastapiapp/overlays/local/README.md#verify-the-deployment).
 For method 1, verify existing data and login; for method 2, register a new account
 and verify login. Resume traffic only after these checks pass.
 

@@ -1,5 +1,5 @@
 # Chart 10.11.0 packages Argo CD v3.5.5, matching the former manifest install.
-# Keep names used by the bootstrap scripts and deploy-local readiness checks.
+# Keep names used by the bootstrap scripts and gitops readiness checks.
 fullnameOverride: argocd
 
 crds:
