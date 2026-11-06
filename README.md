@@ -32,6 +32,24 @@ application deployments; a platform change takes effect after a reviewed Terrafo
 apply. Read [the Terraform guide](docs/terraform.md) before adopting an existing
 installation. kind remains responsible for the cluster, ports and storage mounts.
 
+## Guided local setup
+
+With the prerequisites below installed and Docker Desktop running:
+
+```sh
+./scripts/setup-local.sh --check
+./scripts/setup-local.sh
+```
+
+This repeatable entry point prepares the separate database, creates/reuses kind,
+runs the reviewed Terraform bootstrap, provisions app/Git connection Secrets,
+builds and loads the selected app image, checks Pod database connectivity, registers
+local GitOps and verifies migrations, app sync and HTTP readiness. It asks for a
+read-only GitHub deploy-key file when Argo CD has no existing Git credentials.
+See [setup details and recovery](docs/setup-local.md), including one-time key setup.
+It preserves existing configuration/passwords and stops at legacy migration or
+credential mismatches. The manual steps below remain available.
+
 ## Prerequisites
 
 Install Docker Desktop (and start it), kind, kubectl and Terraform
@@ -43,8 +61,8 @@ image. For validation also install Helm 3 (CI uses `v3.19.0`) and kubeconform
 `v0.8.0`. Helm CLI renders the chart for validation and is used for one-time
 adoption; normal bootstrap uses Terraform's Helm provider without the Helm CLI.
 Docker Compose is required for validation; its CLI validates the database
-configuration without needing a running Docker daemon. Python is not required
-for platform setup or validation. The optional
+configuration without needing a running Docker daemon. Python **3.11 or newer**
+is required for the setup entry point and its validation tests. The optional
 `teardown-kind.sh --delete-database` operation needs Python 3 and the sibling
 `gitops` checkout. Internet access is required to
 download providers, images, pinned Helm charts and validation schemas.
