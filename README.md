@@ -3,21 +3,23 @@
 Prepare the local Kubernetes platform used by the sibling `gitops`
 repository. This is an independent Git repository. It owns the kind cluster,
 host port and storage mappings, pinned Argo CD installation, and shared Traefik
-controller. Application code lives in app repositories; app deployments,
-PostgreSQL workloads, PV/PVCs, credentials, backups and migrations stay in
-`gitops`.
+controller, plus the separate local deployment PostgreSQL container and its
+backup/restore tooling. Application code lives in app repositories; app workloads,
+connection Secrets and migration Jobs stay in `gitops`. Existing Kubernetes
+database manifests remain there only for migration and legacy recovery.
 
 ```text
 deployment-project/
   infra-local/                  # This repository
-    kind/cluster.example.yaml    # Cluster, localhost port and parent storage mount
+    kind/cluster.example.yaml    # Cluster and localhost ingress port
+    database/                   # Separate deployment PostgreSQL Compose service
     argocd/chart-version.txt     # Helm chart 10.11.0 (Argo CD v3.5.5)
     argocd/values.yaml           # Argo CD settings
     traefik/                    # Chart 42.0.0 and exact shared ingress values
     terraform/platform/         # One local state: Argo CD and Traefik Helm releases
     scripts/                    # Create, bootstrap, readiness checks and validation
     docs/terraform.md            # Ownership, plans, state and existing-cluster adoption
-    docs/rebuild.md              # Rebuild with retained data or an empty database
+    docs/rebuild.md              # Cluster rebuild; legacy storage recovery
   gitops/                       # Shared app bases, environment overlays and releases
   apps/myfastapiapp/             # Application code and image build
 ```
@@ -40,41 +42,45 @@ kubectl `v1.36.1`, kind `v0.33.0`; the cluster example uses kind's default node
 image. For validation also install Helm 3 (CI uses `v3.19.0`) and kubeconform
 `v0.8.0`. Helm CLI renders the chart for validation and is used for one-time
 adoption; normal bootstrap uses Terraform's Helm provider without the Helm CLI.
-Python is not required by this repository. Internet access is required to
+Docker Compose is required for validation; its CLI validates the database
+configuration without needing a running Docker daemon. Python is not required
+for platform setup or validation. The optional
+`teardown-kind.sh --delete-database` operation needs Python 3 and the sibling
+`gitops` checkout. Internet access is required to
 download providers, images, pinned Helm charts and validation schemas.
 
-Port `127.0.0.1:80` must be available. Docker Desktop must allow sharing the
-chosen laptop storage directory. Existing clusters should follow
+Ports `127.0.0.1:80` and `127.0.0.1:5433` must be available. The deployment
+database uses Docker Desktop host routing; see [database setup](docs/database.md).
+For legacy mounted databases, Docker Desktop must still allow sharing the original
+laptop storage directory. Existing clusters should follow
 [the repository split instructions](../gitops/docs/local/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
 before adopting the new ownership; creating a second cluster is unnecessary.
 
-## 1. Configure storage and create the cluster
+## 1. Prepare the database and cluster
 
-Run from this repository root:
+From this repository, follow [database setup](docs/database.md#first-setup) to
+configure private password files, create the separate external Docker volume and
+start PostgreSQL. Existing Kubernetes databases must use the
+[cutover runbook](../gitops/docs/local/database-migration.md); preparing configuration
+does not migrate records.
+
+For a **new** kind cluster:
 
 ```sh
-mkdir -p "$HOME/.local/share/staging/postgres/myfastapiapp-postgres"
 cp -n kind/cluster.example.yaml kind/cluster.local.yaml
-printf '%s/.local/share/staging/postgres\n' "$HOME"
-```
-
-Edit `kind/cluster.local.yaml`: replace `hostPath` with that absolute parent
-directory. kind does not expand `$HOME` or `~` in YAML. The file is ignored by
-Git. Preserve the node label, `/mnt` mount and localhost port mapping supplied
-by the example. For each additional database, create `<app>-postgres/` under
-the same parent before deploying it.
-
-```sh
 ./scripts/create-cluster.sh
 ```
 
 The default cluster is `argocd-postgres`, context `kind-argocd-postgres`. The
-script refuses to replace an existing cluster. To choose another name or
-config, use `./scripts/create-cluster.sh another-cluster /absolute/config.yaml`
-and pass the same cluster name to the platform scripts. Each checkout's platform
-Terraform state file must belong to only one cluster; use separate checkouts
-for different clusters. App runbooks and Argo CD
-UI commands below use the default; adjust their explicit contexts consistently.
+script refuses to replace an existing cluster. The current example needs no
+database storage mount. Keep existing ignored kind files, `/mnt` mounts, node
+labels and laptop data unchanged for legacy recovery or other apps. Older
+mount-based setups can refer to `kind/cluster-storage.example.yaml`.
+
+To select another name/config, use `./scripts/create-cluster.sh another-cluster
+/absolute/config.yaml` and pass that name to platform scripts. Each platform
+Terraform state must belong to only one cluster; use separate checkouts for
+other clusters. Existing clusters need no rebuild for the database cutover.
 
 ## 2. Install Argo CD and shared ingress
 
@@ -138,13 +144,13 @@ The platform provides this contract:
 | Argo CD namespace | `argocd`, with Application/ApplicationSet CRDs ready |
 | Shared ingress | Namespace `traefik`, IngressClass `traefik` |
 | HTTP mapping | `127.0.0.1:80` → node `30080` → Traefik |
-| Storage mount | Laptop parent directory → `/mnt` in the kind node |
-| Storage node label | `staging.local/postgres-storage: "true"` |
-| App database path | `/mnt/<app>-postgres`, with PV/PVC owned by the app |
+| Deployment database | Separate Compose PostgreSQL, reachable from kind via `host.docker.internal:5433` |
+| Database persistence | External Docker volume `deployment-project-myfastapiapp-postgres` |
 
 From `gitops`, follow [deployment setup](../gitops/docs/local/setup.md):
-provision the app's namespace, database and registry Secrets, make its selected
-image available, validate and publish the deployment manifests, then run:
+provision the app namespace, connection and registry Secrets, make its selected
+image available, run the Pod database connectivity probe, validate and publish
+the deployment manifests, then run:
 
 ```sh
 cd ../gitops
@@ -152,8 +158,9 @@ cd ../gitops
 ```
 
 That separate bootstrap registers `staging-root`; its ApplicationSet discovers
-`apps/*/overlays/local` from GitHub `main`. App sync is automatic, including database creation
-and migrations, so credentials and any retained data must be ready first. The
+`apps/*/overlays/local` from GitHub `main`. App sync is automatic, including schema
+migrations. The separate database, connection Secret and any restored records
+must be ready first. The
 root no longer owns Traefik. Publishing app releases does not recreate the
 cluster. Verify app readiness using its own deployment README.
 
@@ -165,7 +172,8 @@ git diff --check
 ```
 
 Validation renders both pinned Helm charts, checks
-Terraform formatting/configuration, Bash bootstrap safety tests, Kubernetes/Argo CD
+Terraform formatting/configuration, Compose configuration, database helper safety
+tests, Bash bootstrap safety tests, Kubernetes/Argo CD
 schemas and Bash syntax, and needs no running cluster or AWS credentials.
 Terraform initialization uses temporary configuration copies, `-backend=false`
 and the committed provider locks; it downloads providers without reading or
@@ -176,6 +184,11 @@ resources (including Helm hook Jobs) and Traefik resources are checked
 strictly. Unknown platform resource kinds still fail. CI runs the same checks.
 kind configuration is consumed by cluster creation; these checks do not validate kind YAML, CRD
 definition semantics or runtime readiness.
+
+With Docker Desktop running, `bash tests/database-integration.sh` separately
+tests app privileges, host routing, legacy dump/restore ownership and external
+volume retention using only a temporary project and volume. It cleans up those
+test resources and does not start the deployment database or create a cluster.
 
 When changing provider pins, [refresh the lock file for both macOS ARM64 and
 Linux AMD64](docs/terraform.md#maintain-provider-checksums) before committing.
@@ -207,6 +220,16 @@ an existing cluster or relocate data merely to match the new example.
 
 ## Tear down and spin up again
 
+For the current external database, follow [cluster rebuild](docs/rebuild.md#rebuild-with-the-external-compose-database).
+Cluster teardown preserves the running Compose database and its external volume,
+including when the legacy `--delete-database` option is supplied. Database
+backup, restore and deliberate reset are [separate procedures](docs/database.md).
+
+**The database-file removal methods below apply only to the legacy Kubernetes
+database.** They are retained for existing installations and target the old
+laptop `pgdata`, never the new Docker volume. Preserve those files after cutover
+until their retirement is explicitly authorized.
+
 The platform stores state locally at `terraform/platform/terraform.tfstate`.
 Legacy `terraform/argocd` state is preserved until transferred and archived privately.
 State, state backups, plans, legacy generated manifests and real `.tfvars` are ignored;
@@ -221,7 +244,63 @@ those files before registering apps again.
 Do not use `terraform destroy`: kind owns the cluster, and the Terraform-managed
 Helm releases have `prevent_destroy`. Keep the platform state for this same
 named cluster; the next apply refreshes it and recreates the missing releases.
-No script here automatically deletes clusters, storage or credentials.
+The teardown helper below deletes a selected kind cluster only after explicit
+confirmation. By default it keeps laptop database files; `--delete-database`
+also discards myfastapiapp's data. It keeps local configuration and Terraform
+state, and never runs `terraform destroy` or prunes Docker resources.
+
+### Scripted teardown (keep database files)
+
+Complete the database backup, restore verification and writer shutdown in
+[preparation](docs/rebuild.md#prepare-for-either-method), then run from this repository:
+
+```sh
+./scripts/teardown-kind.sh --dry-run
+./scripts/teardown-kind.sh
+```
+
+The preview makes no changes. The second command asks you to type
+`delete argocd-postgres`, saves cluster Secrets and both local Terraform states
+privately under `$HOME/.local/share/infra-local/backups/`, pauses Argo CD and
+refuses to proceed while syncs or Jobs are active. It drains all kind nodes
+before deleting the cluster, allowing PostgreSQL's normal shutdown grace period.
+It does not create or test database backups. Existing filled Secret files and
+backup archives are retained. The saved Secrets contain credentials; keep them private.
+
+An optional cluster argument selects another local kind cluster, for example
+`./scripts/teardown-kind.sh example --dry-run`. The script checks that the explicit
+`kind-<cluster>` context's node names match Docker's kind nodes. Use
+`INFRA_LOCAL_KUBECONFIG` for one other absolute kubeconfig file. An already absent
+cluster is a successful no-op. If shutdown fails, deletion stops; follow
+[interrupted teardown](docs/rebuild.md#interrupted-teardown).
+
+Continue with [startup](#spin-up-after-either-method). For an empty database,
+use the optional argument below or the app-owned physical removal procedure
+in method 2 after teardown.
+
+### Scripted teardown including myfastapiapp's database
+
+To test a fresh database as well as a fresh cluster:
+
+```sh
+./scripts/teardown-kind.sh --delete-database --dry-run
+./scripts/teardown-kind.sh --delete-database
+```
+
+The script displays the exact host `pgdata` path discovered from the running
+kind nodes' Docker mounts, then requires `delete argocd-postgres and database`.
+After successful drain and cluster deletion, it delegates deletion to the
+[app-owned helper](../gitops/apps/myfastapiapp/overlays/local/postgres/delete-data.py).
+Only myfastapiapp's `pgdata` is removed: accounts, sessions, records and database
+roles/passwords are lost. The app directory, other apps' data, filled Secret
+files, backups and Terraform state are kept. Retain a verified database backup
+first if you may need this data later.
+
+Python 3 and the sibling `gitops` checkout are required for this argument. The
+helper rejects unsafe/ambiguous paths, symlinked app/data directories, and
+storage mounted by other running containers. Without a live cluster, the
+wrapper cannot discover the original path and stops; see
+[interrupted teardown](docs/rebuild.md#interrupted-teardown) for cleanup retries.
 
 ### Method 1: keep the database
 

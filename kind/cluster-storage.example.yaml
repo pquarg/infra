@@ -1,0 +1,17 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080 # Matches Traefik's NodePort.
+        hostPort: 80
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+    labels:
+      staging.local/postgres-storage: "true"
+    extraMounts:
+      # Replace with an absolute laptop directory outside this Git repository.
+      # kind does not expand $HOME or ~ in YAML.
+      # Create <app>-postgres/ inside this parent before deploying each database.
+      - hostPath: /absolute/path/to/staging/postgres
+        containerPath: /mnt

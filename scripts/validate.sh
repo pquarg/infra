@@ -3,21 +3,26 @@ set -euo pipefail
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
-for required_command in kubectl kubeconform terraform helm; do
+for required_command in kubectl kubeconform terraform helm docker; do
   if ! command -v "$required_command" > /dev/null; then
     printf 'Error: %s is required; see README.md.\n' "$required_command" >&2
     exit 1
   fi
 done
 bash tests/bootstrap.sh
+bash tests/teardown.sh
+bash tests/database.sh
 terraform fmt -check -recursive terraform
-for script in scripts/*.sh tests/*.sh; do
+for script in scripts/*.sh tests/*.sh database/*.sh; do
   bash -n "$script"
 done
 render_dir="$(mktemp -d)"
 trap 'rm -rf -- "$render_dir"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+# Configuration only; no Docker daemon, real settings, passwords or volumes.
+LOCAL_DB_SECRETS_DIR="$render_dir/secrets" LOCAL_DB_PORT=5433 \
+  docker compose --env-file database/.env.example -f database/compose.yaml config --quiet
 # Validate clean copies so legacy state/providers and local .tfvars are untouched.
 mkdir -p "$render_dir/argocd" "$render_dir/traefik"
 cp argocd/chart-version.txt argocd/values.yaml "$render_dir/argocd/"

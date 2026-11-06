@@ -1,0 +1,38 @@
+name: deployment-project-local-db
+services:
+  postgres:
+    # Match the PostgreSQL version selected by infra-aws, reviewed separately.
+    image: postgres:17.11-bookworm
+    restart: unless-stopped
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_DB: myfastapiapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/admin_password
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    secrets:
+      - admin_password
+      - app_password
+    ports:
+      # Separate from the app repository's development database on 5432.
+      - "127.0.0.1:${LOCAL_DB_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-app.sh:/docker-entrypoint-initdb.d/10-app.sh:ro
+    healthcheck:
+      # TCP plus app authentication: the temporary init server must not pass.
+      test: ["CMD-SHELL", "PGPASSWORD=$$(cat /run/secrets/app_password) psql -h 127.0.0.1 -U myfastapiapp -d myfastapiapp -v ON_ERROR_STOP=1 -Atqc 'SELECT 1' >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+secrets:
+  admin_password:
+    file: ${LOCAL_DB_SECRETS_DIR:?Set an absolute directory outside Git}/admin-password
+  app_password:
+    file: ${LOCAL_DB_SECRETS_DIR:?Set an absolute directory outside Git}/app-password
+volumes:
+  postgres-data:
+    # Created explicitly by local-database.sh up; even down --volumes keeps it.
+    external: true
+    name: deployment-project-myfastapiapp-postgres
