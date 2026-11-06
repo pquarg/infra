@@ -1,116 +1,82 @@
 # Terraform for the local platform
 
-Terraform installs Argo CD as a Helm release, like `infra-aws`. This replaces the
-upstream-manifest renderer and per-object imports; no Python is required.
-Chart `10.11.0` packages Argo CD `v3.5.5`, preserving the previous Argo CD version.
-The chart pin lives in `argocd/chart-version.txt`; settings live in
-`argocd/values.yaml`. Terraform reads both files directly. The values also retain
-the former Dex `v2.45.1` and Redis `8.2.3-alpine` images instead of upgrading to
-the chart defaults during this ownership change.
+kind owns the cluster, node, ports and storage mounts. One local Terraform root,
+`terraform/platform`, owns real Helm releases `argocd/argocd` and `traefik/traefik`.
+Argo CD owns application resources from `deploy-local`. Terraform reads this
+checkout; there is no platform Git watcher, AWS provider/backend, Kubernetes
+provider or local Python requirement.
 
-## Owners and stages
-
-| Owner | Resources |
-| --- | --- |
-| kind and `scripts/create-cluster.sh` | Cluster, node, host ports and storage parent mount |
-| `terraform/argocd` | Helm release `argocd` in namespace `argocd`, including CRDs |
-| `terraform/platform` | `Application/traefik` in namespace `argocd` |
-| Argo CD | Traefik chart resources and app registrations/workloads from `deploy-local` |
-| `deploy-local` | App manifests, releases, databases, PV/PVCs, credentials, backups and recovery |
-
-kind remains outside Terraform: it creates a Kubernetes API that the Helm and
-Kubernetes providers can connect to. The two Terraform roots remain sequential
-because the Kubernetes provider queries resource types during planning. It cannot
-plan an Application before Argo CD's CRD is installed. The bootstrap wrapper
-waits for Argo CD between applies and checks Traefik readiness afterwards.
-
-There is no `local-exec`, AWS provider/backend or platform Git-watching root
-Application. Terraform reads this checkout. Argo CD reads Traefik's chart
-repository; the separate deployment root reads app manifests from Git.
+Pins remain Argo CD chart `10.11.0` (Argo CD `v3.5.5`), Traefik `42.0.0`, Helm
+provider `3.3.0`. Argo CD's Dex/Redis image overrides, Secret behavior and tracking
+label are unchanged. Traefik retains standard Ingress support, class `traefik`,
+NodePort `30080`, disabled dashboard/HTTPS exposure and disabled Traefik CRDs.
 
 ## Inspect and apply manually
 
-Run from `infra-local`. Install the README's prerequisites and create the kind
-cluster first. For an existing installation, complete adoption below first.
+Use one cluster per checkout/state. Providers always use `kind-<cluster_name>`
+and the single `kubeconfig_path`, never the ambient context. Configure another
+cluster/file in ignored `terraform/platform/terraform.tfvars` using its example.
+Run from `infra-local` after creating kind or completing adoption below:
 
 ```sh
 umask 077
-terraform -chdir=terraform/argocd init
-terraform -chdir=terraform/argocd plan -out=argocd.tfplan
-terraform -chdir=terraform/argocd show argocd.tfplan
-```
-
-On a fresh cluster, expect one Helm release creation. On an adopted installation,
-investigate unexpected changes before applying. Helm plans show chart settings,
-not a complete Kubernetes object diff. Render the pinned chart for inspection:
-
-```sh
-helm template argocd argo-cd \
-  --repo https://argoproj.github.io/argo-helm \
-  --version "$(cat argocd/chart-version.txt)" \
-  --namespace argocd --values argocd/values.yaml --include-crds
-```
-
-When ready, apply and wait before planning the second root:
-
-```sh
-terraform -chdir=terraform/argocd apply argocd.tfplan
-kubectl --context kind-argocd-postgres -n argocd wait --for=condition=Established \
-  crd/applications.argoproj.io crd/applicationsets.argoproj.io --timeout=120s
-kubectl --context kind-argocd-postgres -n argocd \
-  rollout status statefulset/argocd-application-controller --timeout=300s
-kubectl --context kind-argocd-postgres -n argocd \
-  rollout status deployment/argocd-server --timeout=300s
-kubectl --context kind-argocd-postgres -n argocd \
-  rollout status deployment/argocd-repo-server --timeout=300s
-kubectl --context kind-argocd-postgres -n argocd \
-  rollout status deployment/argocd-applicationset-controller --timeout=300s
-
-terraform -chdir=terraform/platform init
+terraform -chdir=terraform/platform init -lockfile=readonly
 terraform -chdir=terraform/platform plan -out=platform.tfplan
 terraform -chdir=terraform/platform show platform.tfplan
 terraform -chdir=terraform/platform apply platform.tfplan
 ./scripts/setup-ingress-kind.sh
 ```
 
-`./scripts/bootstrap-kind.sh` performs these stages with interactive Terraform
-approval. It needs neither Python nor the Helm CLI and does not auto-approve.
-App credentials and registration still follow `deploy-local` setup afterwards.
+A fresh plan creates two Helm releases. The wrapper `scripts/bootstrap-kind.sh`
+performs one interactive apply, then checks CRDs and both controllers. It also
+checks legacy/unadopted ownership **before** any apply. Helm plans do not show a
+full Kubernetes object diff; render both charts with `scripts/validate.sh` and
+inspect `helm template` output when reviewing a migration.
 
 ## Adopt an existing installation
 
-Do not rebuild the cluster, delete its namespace/CRDs, reset passwords or move
-database files. Bootstrap stops on legacy manifest state or an existing untracked
-Argo CD server. Normal Terraform applies do not enable Helm `take_ownership` or
-forced resource replacement. Adoption is a separate operator procedure.
+This is a separately scheduled live ownership migration, not part of ordinary
+bootstrap. Freeze infrastructure applies/state writes, back up state and cluster
+objects privately, record Git revisions and Helm/object identities, finish active
+syncs/migrations, verify app backups/restoration, and record database/login/data,
+localhost ingress and Git access baselines. Pause and record root/app sync policies.
+Never delete the cluster, namespace/CRDs, credentials or database files to simplify it.
+Use explicit context/kubeconfig on every Helm/kubectl command below.
 
-Use one cluster per checkout/state. The commands below select the default cluster;
-adjust the context, kubeconfig and both roots' ignored variables consistently for
-another cluster. First inspect whether Helm already manages Argo CD:
+Create a private transfer ledger with source/destination address, actual import
+ID, state snapshot/serial and completed checkpoint. Inspect both old state files
+from the configuration-free repository root:
 
 ```sh
-helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres \
-  -n argocd list --all
+terraform state list -state=terraform/argocd/terraform.tfstate
+terraform state list -state=terraform/platform/terraform.tfstate
+helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres -n argocd list --all
+helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres -n traefik list --all
 ```
+
+Skip absent state files. Preserve the final platform state at its existing path.
+Do not run Terraform in the retired `terraform/argocd` directory; its ignored
+state/local configuration is deliberately left untouched by the refactor.
 
 ### An existing Helm release
 
-If `argocd` is already a Helm release in namespace `argocd`, inspect its chart,
-values and status with `helm status` and `helm get values` using the same explicit
-kubeconfig/context. Preserve intended customizations in `argocd/values.yaml`
-without adding credentials. If legacy per-object bindings remain in state, back
-up and forget those bindings as described below before importing the release.
+Inspect chart, values and status with `helm status` and `helm get values`. Preserve
+custom settings in checked-in values without credentials. If Argo CD is tracked in
+the old state, back it up, then forget only its release binding from the old state:
 
 ```sh
-umask 077
-terraform -chdir=terraform/argocd init
-terraform -chdir=terraform/argocd import helm_release.argocd argocd/argocd
+terraform state rm -state=terraform/argocd/terraform.tfstate -dry-run helm_release.argocd
+terraform state rm -state=terraform/argocd/terraform.tfstate helm_release.argocd
+terraform -chdir=terraform/platform init -lockfile=readonly
+terraform -chdir=terraform/platform import helm_release.argocd argocd/argocd
 ```
 
-Skip import if `terraform state list` already includes `helm_release.argocd`.
-Import records an existing release; it does not convert a manifest installation.
-Review a new plan before applying; imported provider settings can differ from
-the configuration even when the chart version is unchanged.
+Import only actual releases absent from the final state; skip an already-correct
+binding. Imports record a release; they do not install Helm or convert manifest
+objects. If import fails, repair it or restore the source binding under the freeze;
+never apply while ownership is incomplete. Inspect imported provider defaults
+before accepting a plan. Treat partial migration according to the ledger, not by
+rerunning installation. A Git revert does not transfer state.
 
 ### A manifest-based Argo CD installation
 
@@ -203,75 +169,109 @@ cluster-free validator.
    kubernetes_secret_v1.installation
    ```
 
-   Forgetting a group removes its state bindings, not its live objects. Keep the platform root's state and
-   `kubernetes_manifest.traefik` binding. Do not apply between forgetting old
-   bindings and importing the Helm release. `migration.tf` also contains
+   Forgetting a group removes its state bindings, not its live objects. Keep the platform state; the Traefik binding is handled separately below. Do not apply between forgetting old
+   bindings and importing the Helm release. `terraform/platform/migration.tf` also contains
    `removed` blocks with `destroy = false` so old bindings cannot become deletion
    plans just because their resource blocks were retired.
-8. Initialize and import `helm_release.argocd` using the Helm-release commands
-   above. Review a new plan and apply only expected changes. Once the release is
-   imported, routine applies use `atomic = true` for rollback on upgrade failure.
-   Verify platform/app health again, then restore the recorded auto-sync policies.
+8. Import `helm_release.argocd` into **terraform/platform**, using the commands
+   above. Continue with the Traefik transfer below before a combined apply.
+   Restore auto-sync only after both controllers and app/data checks pass.
 
-### Import Traefik's registration if state is missing
+### Transfer Traefik from Argo CD to Helm
 
-If the Traefik Application already exists but is absent from platform state:
+1. Privately save `Application/traefik`, its finalizers, sync policy and resource
+   inventory, both state snapshots, and all Traefik object identities/selectors.
+   Confirm the deployment root no longer declares Traefik. Disable auto-sync and
+   wait for any operation to finish; inspect operation status rather than assuming
+   disabling auto-sync stops an already-running sync.
+2. Inspect finalizers. Only after reviewing the inventory, remove the Application
+   registration **without cascading deletion**. These commands intentionally affect
+   the registration alone; do not run an Argo CD cascade delete:
 
-```sh
-terraform -chdir=terraform/platform init
-terraform -chdir=terraform/platform import kubernetes_manifest.traefik \
-  'apiVersion=argoproj.io/v1alpha1,kind=Application,namespace=argocd,name=traefik'
-```
+   ```sh
+   kube=(kubectl "--kubeconfig=$HOME/.kube/config" --context=kind-argocd-postgres)
+   "${kube[@]}" -n argocd patch application traefik --type=merge \
+     -p '{"spec":{"syncPolicy":{"automated":null}}}'
+   # Wait for operationState to be absent or completed, then inspect finalizers.
+   "${kube[@]}" -n argocd get application traefik -o yaml
+   "${kube[@]}" -n argocd patch application traefik --type=merge \
+     -p '{"metadata":{"finalizers":null}}'
+   "${kube[@]}" -n argocd delete application traefik --wait=true
+   terraform state rm -state=terraform/platform/terraform.tfstate -dry-run kubernetes_manifest.traefik
+   terraform state rm -state=terraform/platform/terraform.tfstate kubernetes_manifest.traefik
+   ```
 
-Only import the Application, never Traefik's chart workloads. Skip this step if
-the binding already exists. Review both roots' plans before running bootstrap.
+   Forget the binding only if present. If the Application is already gone, verify
+   workloads remain and consult the ledger. Never apply the old root to detach it.
+3. Argo CD normally renders Helm templates without creating a Helm release record.
+   An import alone cannot adopt this installation. Render the exact chart with
+   release name/namespace `traefik`, `--skip-crds` and `traefik/values.yaml`.
+   Compare names, selectors, Services, class, RBAC and all values against the saved
+   inventory. Review customizations and any restarts explicitly; stop on immutable
+   selector differences instead of using force replacement.
+4. If no actual release exists, adopt the running resources into Helm 3.19.0:
 
-## Local configuration and state
+   ```sh
+   helm pull traefik --repo https://traefik.github.io/charts \
+     --version "$(cat traefik/chart-version.txt)" --destination "$backup_dir"
+   helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres \
+     upgrade --install traefik "$backup_dir/traefik-$(cat traefik/chart-version.txt).tgz" \
+     --namespace traefik \
+     --values traefik/values.yaml --skip-crds --take-ownership \
+     --wait --wait-for-jobs --timeout 10m
+   ```
 
-Both roots default to context `kind-argocd-postgres` in `~/.kube/config`.
-They do not use the current kubectl context or an ambient `KUBECONFIG` list.
-For manual Terraform commands, optionally copy each root's
-`terraform.tfvars.example` to its ignored `terraform.tfvars`. Set matching
-`cluster_name` and `kubeconfig_path` in both. The bootstrap wrapper takes a cluster
-argument and uses `INFRA_LOCAL_KUBECONFIG` for another kubeconfig:
+   Pulling the chart archive avoids Helm interpreting the local `traefik/`
+   settings directory as a chart.
 
-```sh
-INFRA_LOCAL_KUBECONFIG=/absolute/kubeconfig ./scripts/bootstrap-kind.sh another-cluster
-```
+   Do not use `--atomic`, `--cleanup-on-fail`, `--force` or uninstall as rollback:
+   a failed first adoption must retain its resources for repair. If a real release
+   already exists, inspect and import it instead of reinstalling it.
+5. Import the actual release into the final state:
 
-Each root uses Terraform's local backend and its own `terraform.tfstate`,
-`.terraform/` directory and committed `.terraform.lock.hcl`. Do not copy AWS state
-or backend settings here. Use one cluster per checkout and keep state/private
-backups outside Git. State and binary plans may contain credentials, including
-Helm release information. The wrapper uses `umask 077`; use it for manual commands
-too. Never edit state JSON manually or reuse old saved plans after migration.
+   ```sh
+   terraform -chdir=terraform/platform import helm_release.traefik traefik/traefik
+   terraform -chdir=terraform/platform plan -out=platform.tfplan
+   terraform -chdir=terraform/platform show platform.tfplan
+   ```
 
-If state is lost while the cluster survives, import the Helm release and Traefik
-registration before applying. A fresh clone does not inherit local state.
-For a deliberately rebuilt cluster with the same name and Helm-based state,
-Terraform refreshes and recreates missing resources; install Argo CD before
-planning platform again. See [rebuild and recovery](rebuild.md).
+   Expect both real release bindings and no remaining Application binding. The
+   defensive `removed` blocks forget legacy bindings without deletion, but are
+   not an adoption workflow. Ordinary bootstrap never enables takeover or force.
+6. Check both controller rollouts/CRDs, Argo CD sign-in and Git access, existing
+   app registrations, `scripts/setup-ingress-kind.sh`, localhost `/health` and
+   `/ready`, existing database authentication and retained records. Restore
+   recorded sync policies only when these pass. Review a fresh ordinary plan for
+   unexpected resource changes. Archive old empty Argo CD state/config privately
+   only after recovery is checked; keep the final platform state in place.
 
-Managed resources have `prevent_destroy`. It blocks routine Terraform replacement
-and destroy plans, but does not protect against resource-block removal, Helm's
-internal upgrade operations or manual `kubectl`/kind deletion. CRDs also have
-Helm's keep policy. These guards are not backups or authorization to destroy.
+## Recovery and validation limits
 
-## Validation limits
+Local state, backups, binary plans and real `.tfvars` remain ignored and may
+contain credentials. Use `umask 077`; never edit state JSON or overwrite a newer
+state with an old snapshot. If state is lost while the cluster survives, import
+both actual releases before applying. See [rebuild](rebuild.md) for deliberate
+cluster replacement using the same data and credentials.
 
-`./scripts/validate.sh` checks Terraform formatting/configuration in temporary
-copies with backend initialization disabled, runs Bash bootstrap tests, checks
-Bash syntax and validates rendered Helm/Kustomize resources against schemas.
-The pin file is shared by Terraform and Helm rendering so versions cannot drift.
-Helm 3 and kubeconform are additional validation tools, not bootstrap dependencies.
+Rollback depends on the checkpoint. Restore previous code and correct bindings
+under the apply freeze, with one owner at a time. To return adopted Traefik to
+Argo CD, detach its Terraform binding **without Helm uninstall**, then restore
+its registration only after comparing the saved inventory. A Git revert alone
+neither restores bindings nor undoes Helm adoption. Keep private backups until
+all live checks pass.
 
-Validation requires network access but no cluster or AWS credentials. It does
-not validate kind configuration, CRD definition semantics, live provider plans,
-Helm adoption/upgrade behavior, credential retention or workload readiness.
-The three upstream CRD definitions are explicitly skipped by schema validation;
-unknown platform resource kinds still fail.
+Both Helm releases have `prevent_destroy`; CRDs retain their existing keep
+policy. These guards do not protect against configuration removal, internal Helm
+upgrade changes or manual cluster deletion. Normal upgrades use atomic rollback;
+first adoption deliberately does not.
 
-References: [Pinned chart metadata](https://github.com/argoproj/argo-helm/blob/argo-cd-10.11.0/charts/argo-cd/Chart.yaml),
-[chart values](https://github.com/argoproj/argo-helm/blob/argo-cd-10.11.0/charts/argo-cd/values.yaml),
-[Helm provider release settings/import](https://github.com/hashicorp/terraform-provider-helm/blob/v3.3.0/docs/resources/release.md),
-[Terraform removed blocks](https://developer.hashicorp.com/terraform/language/block/removed).
+The validator uses temporary copies and backend-disabled init with committed
+locks. It renders both charts, checks schemas/Bash and runs bootstrap safety tests.
+It requires network access, Helm 3, Terraform, kubectl and kubeconform, but no
+cluster, Python or AWS credentials. It does not validate kind YAML, CRD semantics,
+live plans, Helm adoption, credentials, application data or runtime health.
+
+References: [Helm 3 upgrade](https://v3.helm.sh/docs/helm/helm_upgrade/),
+[Helm provider import](https://github.com/hashicorp/terraform-provider-helm/blob/v3.3.0/docs/resources/release.md),
+[Terraform state rm](https://developer.hashicorp.com/terraform/cli/commands/state/rm),
+[non-cascading Application deletion](https://argo-cd.readthedocs.io/en/stable/user-guide/app_deletion/).

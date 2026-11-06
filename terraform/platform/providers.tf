@@ -1,5 +1,5 @@
 variable "cluster_name" {
-  description = "Existing kind cluster; must match the argocd root. Use separate checkouts/state for different clusters."
+  description = "Existing kind cluster; the provider always selects kind-<name>. Use separate checkouts/state for different clusters."
   type        = string
   default     = "argocd-postgres"
 
@@ -15,7 +15,9 @@ variable "kubeconfig_path" {
   default     = "~/.kube/config"
 }
 
-provider "kubernetes" {
-  config_path    = pathexpand(var.kubeconfig_path)
-  config_context = "kind-${var.cluster_name}"
+provider "helm" {
+  kubernetes = {
+    config_path    = pathexpand(var.kubeconfig_path)
+    config_context = "kind-${var.cluster_name}"
+  }
 }

@@ -47,10 +47,10 @@ kind delete cluster --name argocd-postgres
 ./scripts/bootstrap-kind.sh
 ```
 
-Keep the existing Helm-based local Terraform state for this same named cluster.
+After completing any legacy state transfer, keep the unified Helm-based local Terraform state for this same named cluster.
 The first apply refreshes against the replacement cluster and proposes
-recreating the missing Argo CD release. Only plan/apply `terraform/platform` after the
-CRDs have been restored. Review both plans; there is no automatic approval.
+recreating both missing Helm releases in `terraform/platform`. Review the one
+combined plan; there is no automatic approval.
 If instead the cluster survived but the Terraform state was lost, import it
 rather than treating it as a new installation.
 

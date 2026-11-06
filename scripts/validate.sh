@@ -19,9 +19,10 @@ trap 'rm -rf -- "$render_dir"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 # Validate clean copies so legacy state/providers and local .tfvars are untouched.
-mkdir -p "$render_dir/argocd"
-cp argocd/chart-version.txt argocd/values.yaml argocd/traefik.yaml "$render_dir/argocd/"
-for stage in argocd platform; do
+mkdir -p "$render_dir/argocd" "$render_dir/traefik"
+cp argocd/chart-version.txt argocd/values.yaml "$render_dir/argocd/"
+cp traefik/chart-version.txt traefik/values.yaml "$render_dir/traefik/"
+for stage in platform; do
   stage_root="$render_dir/terraform/$stage"
   mkdir -p "$stage_root"
   cp terraform/"$stage"/*.tf terraform/"$stage"/.terraform.lock.hcl "$stage_root/"
@@ -33,7 +34,12 @@ helm template argocd argo-cd \
   --version "$(cat argocd/chart-version.txt)" \
   --namespace argocd --kube-version "${KUBERNETES_VERSION:-1.36.0}" \
   --values argocd/values.yaml --include-crds > "$render_dir/argocd-install.yaml"
-kubectl kustomize argocd > "$render_dir/platform.yaml"
+helm pull traefik --repo https://traefik.github.io/charts \
+  --version "$(cat traefik/chart-version.txt)" --destination "$render_dir"
+helm template traefik "$render_dir/traefik-$(cat traefik/chart-version.txt).tgz" \
+  --namespace traefik \
+  --kube-version "${KUBERNETES_VERSION:-1.36.0}" --skip-crds \
+  --values traefik/values.yaml > "$render_dir/platform.yaml"
 # The schema registry has no CustomResourceDefinition schema. These three
 # definitions come from the pinned Argo CD chart. Skip
 # only those definitions, not unknown custom resources in our platform config.

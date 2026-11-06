@@ -32,3 +32,10 @@ removed {
     destroy = false
   }
 }
+
+removed {
+  from = kubernetes_manifest.traefik
+  lifecycle {
+    destroy = false
+  }
+}

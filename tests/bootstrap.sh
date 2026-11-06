@@ -1,137 +1,84 @@
 #!/usr/bin/env bash
-# Exercise bootstrap ordering and migration guards without a cluster or Python.
+# No cluster, state mutation or Python required.
 set -euo pipefail
-
-project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-test_root="$(mktemp -d)"
-trap 'rm -rf -- "$test_root"' EXIT
-mkdir -p "$test_root/bin" "$test_root/repo/scripts" "$test_root/repo/terraform/argocd" "$test_root/repo/terraform/platform"
-cp "$project_root/scripts/bootstrap-kind.sh" "$project_root/scripts/setup-ingress-kind.sh" "$test_root/repo/scripts/"
-
-cat > "$test_root/bin/fake" <<'STUB'
+root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+tmp="$(mktemp -d)"
+trap 'rm -rf -- "$tmp"' EXIT
+mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/repo/terraform/argocd" "$tmp/repo/terraform/platform"
+cp "$root/scripts/bootstrap-kind.sh" "$root/scripts/setup-ingress-kind.sh" "$tmp/repo/scripts/"
+cat > "$tmp/bin/fake" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
-tool="${0##*/}"
-{
-  printf '%s' "$tool"
-  printf ' <%s>' "$@"
-  printf '\n'
-} >> "$COMMAND_LOG"
-case "$tool" in
-  kind) printf 'example-control-plane\n' ;;
-  docker) printf '127.0.0.1:80\n' ;;
+printf '%s' "${0##*/}" >> "$LOG"
+printf ' <%s>' "$@" >> "$LOG"
+printf '\n' >> "$LOG"
+case "${0##*/}" in
+  kind) echo example-control-plane ;;
+  docker) if [[ "$CASE" != ports ]]; then echo 127.0.0.1:80; fi ;;
   terraform)
-    if [[ "$*" == *' output '* && "$*" == *'-raw context'* ]]; then
-      if [[ "$SCENARIO" == wrong-context && "$*" == *'/platform/'* ]]; then
-        printf 'kind-other'
-      else
-        printf 'kind-example'
-      fi
+    if [[ "$*" == *' output '* ]]; then
+      if [[ "$CASE" == context ]]; then echo kind-other; else echo kind-example; fi
     elif [[ "$*" == *'state list'* ]]; then
-      if [[ "$*" == *'/argocd/'* ]]; then
-        if [[ "$SCENARIO" == legacy ]]; then
-          printf '%s\n' "$LEGACY_ADDRESS"
-        else
-          printf 'helm_release.argocd\n'
-        fi
-      else
-        printf 'kubernetes_manifest.traefik\n'
-      fi
-    elif [[ "$*" == *' apply '* && "$SCENARIO" == failed-apply ]]; then
-      exit 42
-    fi
-    ;;
+      case "$CASE" in
+        legacy) echo "$ADDRESS" ;;
+        old-helm) echo helm_release.argocd ;;
+        tracked) printf 'helm_release.argocd\nhelm_release.traefik\n' ;;
+      esac
+    elif [[ "$*" == *' apply '* && "$CASE" == apply ]]; then exit 42; fi ;;
   kubectl)
-    if [[ "$*" == *'get deployment argocd-server '* && "$SCENARIO" == untracked-argocd ]]; then
-      printf 'deployment.apps/argocd-server\n'
-    elif [[ "$*" == *'get application traefik '* && "$SCENARIO" == untracked-traefik ]]; then
-      printf 'application.argoproj.io/traefik\n'
-    elif [[ "$*" == *'condition=Established'* && "$SCENARIO" == failed-crds ]]; then
-      exit 43
-    fi
-    ;;
+    if [[ "$*" == *'get crd '* && "$CASE" != fresh ]]; then echo crd/applications.argoproj.io; fi
+    if [[ "$*" == *'get application '* && "$CASE" == fresh ]]; then exit 44; fi
+    case "$CASE:$*" in
+      untracked-argocd:*'get deployment argocd-server '*|untracked-traefik:*'get deployment traefik '*) echo existing ;;
+      record:*'get secrets '*) echo secret/release ;;
+      application:*'get application traefik '*) echo application/traefik ;;
+      crds:*'condition=Established'*) exit 43 ;;
+    esac
+    if [[ "$*" == *'get ingressclass '* ]]; then echo traefik.io/ingress-controller; fi
+    if [[ "$*" == *'get service traefik '* ]]; then echo 30080; fi ;;
 esac
-STUB
-chmod +x "$test_root/bin/fake"
-for tool in terraform kubectl kind docker; do
-  ln -s fake "$test_root/bin/$tool"
-done
-
-fail() {
-  printf 'FAIL: %s\n' "$*" >&2
-  cat "$test_root/output" >&2
-  exit 1
-}
-
-run_case() {
-  local scenario="$1"
-  rm -f "$test_root/repo/terraform/argocd/terraform.tfstate" "$test_root/repo/terraform/platform/terraform.tfstate"
-  case "$scenario" in
-    tracked|legacy|wrong-context)
-      touch "$test_root/repo/terraform/argocd/terraform.tfstate" "$test_root/repo/terraform/platform/terraform.tfstate"
-      ;;
+FAKE
+chmod +x "$tmp/bin/fake"
+for tool in terraform kubectl kind docker; do ln -s fake "$tmp/bin/$tool"; done
+fail() { cat "$tmp/out" >&2; printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+run() {
+  rm -f "$tmp/repo/terraform/argocd/terraform.tfstate" "$tmp/repo/terraform/platform/terraform.tfstate"
+  case "$1" in
+    legacy|context|tracked) touch "$tmp/repo/terraform/platform/terraform.tfstate" ;;
+    old-helm) touch "$tmp/repo/terraform/argocd/terraform.tfstate" ;;
   esac
-  : > "$test_root/commands"
+  : > "$tmp/log"
   result=0
-  PATH="$test_root/bin:$PATH" COMMAND_LOG="$test_root/commands" SCENARIO="$scenario" \
-    LEGACY_ADDRESS="${legacy_address:-}" \
-    INFRA_LOCAL_KUBECONFIG='/tmp/explicit kubeconfig' KUBECONFIG=/tmp/ambient-must-not-be-used \
-    bash "$test_root/repo/scripts/bootstrap-kind.sh" example > "$test_root/output" 2>&1 || result=$?
+  PATH="$tmp/bin:$PATH" CASE="$1" ADDRESS="${address:-}" LOG="$tmp/log" \
+    INFRA_LOCAL_KUBECONFIG='/tmp/explicit kubeconfig' KUBECONFIG=/ambient \
+    bash "$tmp/repo/scripts/bootstrap-kind.sh" example > "$tmp/out" 2>&1 || result=$?
 }
-
-apply_count() {
-  grep -c '^terraform .*<apply>' "$test_root/commands" || true
-}
-
+applies() { grep -c '^terraform .*<apply>' "$tmp/log" || true; }
 for scenario in fresh tracked; do
-  run_case "$scenario"
-  [[ "$result" == 0 && "$(apply_count)" == 2 ]] || fail "$scenario should apply both stages"
-  awk '
-    /^terraform .*<apply>/ { applies++; if (applies == 2 && !ready) exit 1 }
-    /condition=Established/ { if (applies != 1) exit 1; ready=1 }
-    END { if (applies != 2 || !ready) exit 1 }
-  ' "$test_root/commands" || fail 'registration must follow Argo CD apply and CRD readiness'
+  run "$scenario"
+  [[ "$result" == 0 && "$(applies)" == 1 ]] || fail "$scenario: one apply expected"
+  awk '/<apply>/ {applied=1} /condition=Established/ {if (!applied) exit 1; ready=1} END {if (!ready) exit 1}' "$tmp/log" || fail ordering
   while IFS= read -r command; do
     case "$command" in
-      kubectl*)
-        [[ "$command" == *'<--context=kind-example>'* && "$command" == *'<--kubeconfig=/tmp/explicit kubeconfig>'* ]] || fail 'kubectl must preserve the explicit context and kubeconfig arguments'
-        [[ "$command" != *'<apply>'* ]] || fail 'kubectl must not apply Terraform-owned objects'
-        ;;
-      terraform*'<apply>'*)
-        [[ "$command" == *'<-var=cluster_name=example>'* && "$command" == *'<-var=kubeconfig_path=/tmp/explicit kubeconfig>'* ]] || fail 'Terraform must use the requested cluster and kubeconfig'
-        [[ "$command" != *'-auto-approve'* ]] || fail 'applies must require review'
-        ;;
+      kubectl*) [[ "$command" == *'<--context=kind-example>'* && "$command" == *'<--kubeconfig=/tmp/explicit kubeconfig>'* && "$command" != *'<apply>'* ]] || fail context ;;
+      terraform*'<apply>'*) [[ "$command" == *'<-var=cluster_name=example>'* && "$command" == *'<-var=kubeconfig_path=/tmp/explicit kubeconfig>'* && "$command" != *auto-approve* ]] || fail review ;;
     esac
-  done < "$test_root/commands"
+  done < "$tmp/log"
 done
-
-for legacy_address in 'kubernetes_manifest.namespace' \
-  'kubernetes_manifest.installation["old-resource"]' \
-  'kubectl_manifest.installation["old-secret"]' \
-  'kubernetes_secret_v1.installation["old-secret"]'; do
-  run_case legacy
-  [[ "$result" != 0 && "$(apply_count)" == 0 ]] || fail 'legacy manifest state must stop before applying'
-  grep -q 'Helm migration' "$test_root/output" || fail 'legacy state needs an actionable migration message'
-  if grep -q '<init>' "$test_root/commands"; then
-    fail 'legacy state must be detected before provider initialization'
-  fi
+for address in kubernetes_manifest.namespace 'kubernetes_manifest.installation["x"]' 'kubectl_manifest.installation["x"]' kubernetes_secret_v1.installation kubernetes_manifest.traefik; do
+  run legacy
+  [[ "$result" != 0 && "$(applies)" == 0 ]] || fail legacy
+  if grep -q '<init>' "$tmp/log"; then fail 'legacy must stop before init'; fi
 done
-
-run_case wrong-context
-[[ "$result" != 0 && "$(apply_count)" == 0 ]] || fail 'wrong-cluster state must stop before either apply'
-
-run_case untracked-argocd
-[[ "$result" != 0 && "$(apply_count)" == 0 ]] || fail 'an existing untracked Argo CD installation needs adoption first'
-
-run_case untracked-traefik
-[[ "$result" != 0 && "$(apply_count)" == 1 ]] || fail 'an existing untracked Traefik Application must not be applied'
-
-run_case failed-apply
-[[ "$result" == 42 && "$(apply_count)" == 1 ]] || fail 'a failed Argo CD apply must stop registration'
-if grep -q 'condition=Established' "$test_root/commands"; then
-  fail 'readiness checks must not run after a failed apply'
-fi
-
-run_case failed-crds
-[[ "$result" == 43 && "$(apply_count)" == 1 ]] || fail 'failed CRD readiness must stop registration'
-printf 'Bootstrap ordering, context and adoption checks passed.\n'
+for scenario in old-helm context untracked-argocd untracked-traefik application record; do
+  run "$scenario"
+  [[ "$result" != 0 && "$(applies)" == 0 ]] || fail "$scenario must stop before apply"
+done
+run apply
+[[ "$result" == 42 && "$(applies)" == 1 ]] || fail 'apply failure propagation'
+if grep -q condition=Established "$tmp/log"; then fail 'no readiness after failure'; fi
+for scenario in crds ports; do
+  run "$scenario"
+  [[ "$result" != 0 && "$(applies)" == 1 ]] || fail "$scenario failure propagation"
+done
+printf 'Platform bootstrap safety tests passed.\n'

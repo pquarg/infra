@@ -1,3 +1,0 @@
-# Optional: copy to terraform.tfvars in BOTH roots and keep their values equal.
-cluster_name    = "argocd-postgres"
-kubeconfig_path = "~/.kube/config"

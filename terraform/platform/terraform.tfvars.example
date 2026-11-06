@@ -1,3 +1,3 @@
-# Optional: copy to terraform.tfvars in BOTH roots and keep their values equal.
+# Optional: copy to terraform.tfvars in this root; the wrapper overrides these values.
 cluster_name    = "argocd-postgres"
 kubeconfig_path = "~/.kube/config"

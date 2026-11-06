@@ -44,12 +44,16 @@ if [[ "$direct_mapping" != true ]]; then
   exit 1
 fi
 
-printf 'Waiting for the shared Traefik controller managed by Argo CD\n'
-"${kube[@]}" --namespace=argocd wait \
-  --for=jsonpath='{.status.sync.status}'=Synced application/traefik --timeout=180s
+printf 'Waiting for the shared Traefik Helm controller\n'
 "${kube[@]}" --namespace=traefik wait \
   --for=jsonpath='{.spec.type}'=NodePort service/traefik --timeout=180s
 "${kube[@]}" --namespace=traefik \
   rollout status deployment/traefik --timeout=180s
 
+controller="$("${kube[@]}" get ingressclass traefik -o jsonpath='{.spec.controller}')"
+node_port="$("${kube[@]}" -n traefik get service traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}')"
+if [[ "$controller" != traefik.io/ingress-controller || "$node_port" != 30080 ]]; then
+  printf 'Error: expected Traefik ingress class and HTTP NodePort 30080.\n' >&2
+  exit 1
+fi
 printf 'Shared ingress is ready. Each app supplies its own hostname and Ingress through Git.\n'

@@ -1,11 +1,23 @@
-resource "kubernetes_manifest" "traefik" {
-  # Terraform owns the registration; Argo CD owns the chart's resources.
-  manifest = yamldecode(file("${path.module}/../../argocd/traefik.yaml"))
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  version          = trimspace(file("${path.module}/../../argocd/chart-version.txt"))
+  namespace        = "argocd"
+  create_namespace = true
 
-  field_manager {
-    name            = "infra-local-terraform"
-    force_conflicts = true
-  }
+  atomic        = true
+  wait          = true
+  wait_for_jobs = true
+  timeout       = 600
+  max_history   = 5
+
+  values = [file("${path.module}/../../argocd/values.yaml")]
+
+  # Existing manifest installations need the reviewed Helm adoption procedure;
+  # routine Terraform applies must never take ownership or force replacement.
+  take_ownership = false
+  force_update   = false
 
   lifecycle {
     prevent_destroy = true
@@ -14,4 +26,28 @@ resource "kubernetes_manifest" "traefik" {
 
 output "context" {
   value = "kind-${var.cluster_name}"
+}
+
+resource "helm_release" "traefik" {
+  name             = "traefik"
+  repository       = "https://traefik.github.io/charts"
+  chart            = "traefik"
+  version          = trimspace(file("${path.module}/../../traefik/chart-version.txt"))
+  namespace        = "traefik"
+  create_namespace = true
+  skip_crds        = true
+
+  atomic        = true
+  wait          = true
+  wait_for_jobs = true
+  timeout       = 600
+  max_history   = 5
+  values        = [file("${path.module}/../../traefik/values.yaml")]
+
+  take_ownership = false
+  force_update   = false
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }

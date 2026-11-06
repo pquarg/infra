@@ -1,13 +1,13 @@
 terraform {
   required_version = "~> 1.17.0"
 
-  # Apply only after Argo CD's CRDs exist. No AWS backend or credentials.
+  # This root has local state, independent of AWS.
   backend "local" {}
 
   required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "3.4.0"
+    helm = {
+      source  = "hashicorp/helm"
+      version = "3.3.0"
     }
   }
 }
