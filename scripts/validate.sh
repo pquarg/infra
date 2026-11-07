@@ -23,7 +23,7 @@ trap 'exit 143' TERM
 # Configuration only; no Docker daemon, real settings, passwords or volumes.
 LOCAL_DB_SECRETS_DIR="$render_dir/secrets" LOCAL_DB_PORT=5433 \
   docker compose --env-file database/.env.example -f database/compose.yaml config --quiet
-# Validate clean copies so legacy state/providers and local .tfvars are untouched.
+# Validate clean copies so working state/providers and local .tfvars are untouched.
 mkdir -p "$render_dir/argocd" "$render_dir/traefik"
 cp argocd/chart-version.txt argocd/values.yaml "$render_dir/argocd/"
 cp traefik/chart-version.txt traefik/values.yaml "$render_dir/traefik/"

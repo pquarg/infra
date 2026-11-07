@@ -6,10 +6,6 @@ This mirrors the AWS boundary: provision a database, then deploy against its
 endpoint. The app repository's Compose database on port 5432 remains an
 independent development database.
 
-Existing Kubernetes databases must follow the
-[cutover procedure](../../gitops/docs/local/database-migration.md) before publishing
-the overlay change. No existing database files are mounted into this container.
-
 ## First setup
 
 Start Docker Desktop. This setup targets Docker Desktop on macOS; Linux Engine
@@ -22,18 +18,46 @@ mkdir -p "$HOME/.local/share/infra-local/database-secrets"
 chmod 700 "$HOME/.local/share/infra-local/database-secrets"
 ```
 
-Set `LOCAL_DB_SECRETS_DIR` in `database/.env` to that directory's absolute path.
-Keep the default `LOCAL_DB_PORT=5433` unless it conflicts with another service.
+Edit `database/.env`: replace its `/absolute/path/...` placeholder with the
+absolute path printed by this command:
+
+```sh
+printf '%s\n' "$HOME/.local/share/infra-local/database-secrets"
+```
+
+Use that value for `LOCAL_DB_SECRETS_DIR`; do not put literal `~` or `$HOME`
+in the `.env` value. Keep `LOCAL_DB_PORT=5433` unless it conflicts with another
+service, and use the same port in the app connection Secret if you change it.
 For first setup only, generate separate admin and app passwords without
 overwriting existing files:
 
 ```sh
-(umask 077; set -o noclobber
- openssl rand -hex 24 > "$HOME/.local/share/infra-local/database-secrets/admin-password"
- openssl rand -hex 24 > "$HOME/.local/share/infra-local/database-secrets/app-password")
+(
+  umask 077
+  set -o noclobber
+  openssl rand -hex 24 > "$HOME/.local/share/infra-local/database-secrets/admin-password"
+  openssl rand -hex 24 > "$HOME/.local/share/infra-local/database-secrets/app-password"
+)
+```
+
+These commands create the password files; installing Argo CD does not. If you
+chose another secrets directory, use it in the generation commands too.
+The `admin-password` is for PostgreSQL administration. The `app-password` is
+the password for the `myfastapiapp` login used by both the API and migrations;
+it is separate from the GitHub PAT used to pull images.
+
+Start the deployment database and check its status:
+
+```sh
 ./scripts/local-database.sh up
 ./scripts/local-database.sh status
 ```
+
+Expect the `postgres` service to be running and healthy. If `app-password` is
+missing on a fresh setup, complete the steps above. If a database volume
+already contains data, recover its existing credentials using
+[lifecycle and credentials](#lifecycle-and-credentials); generating a new file
+does not change an existing database password.
 
 `up` creates the external Docker volume `deployment-project-myfastapiapp-postgres`
 if absent, starts PostgreSQL 17.11 and waits for an authenticated app connection.
@@ -48,6 +72,9 @@ No database port is deliberately bound to the laptop's LAN interfaces. Verify th
 actual path from a kind Pod before deploying; Docker Desktop, VPN and firewall
 settings can affect it. Use the [app setup](../../gitops/apps/myfastapiapp/overlays/local/README.md#provision-credentials)
 to provision its connection Secret and run the Kubernetes connectivity probe.
+That probe must pass before registering the app with Argo CD. A healthy
+Compose container checks PostgreSQL locally; the probe checks the actual
+connection from inside kind.
 
 Local connections use `sslmode=disable`; AWS keeps `verify-full` and its RDS CA
 mounts. Local does not emulate RDS TLS or managed backups.
@@ -82,7 +109,7 @@ disposal is chosen.
 
 ## Backup and restore
 
-Pause auto-sync and writers when a consistent cutover/recovery point is required.
+Pause auto-sync and writers when a consistent recovery point is required.
 Backups contain database data and must remain private and outside Git:
 
 ```sh
@@ -104,9 +131,8 @@ To restore into a freshly provisioned, empty app database with writers stopped:
 ```
 
 This refuses a populated `public` schema and restores in one transaction with
-`--no-owner --no-acl`. Objects belong to the restricted app login even when a
-legacy backup came from a superuser. It does not restore old cluster roles or
-passwords. A nonempty database requires a separately reviewed recovery/reset;
+`--no-owner --no-acl`. Objects belong to the restricted app login. Cluster roles
+and passwords are not restored. A nonempty database requires a separately reviewed recovery/reset;
 the helper deliberately provides no automatic erase operation. After restoring,
 run the app's migration/revision, readiness and existing-login checks.
 
@@ -115,8 +141,13 @@ run the app's migration/revision, readiness and existing-login checks.
 This deletes app accounts, sessions and schema history. Back up and verify a
 restore first if the data may be needed. Pause Argo CD app auto-sync, wait for
 active syncs/migration Jobs, stop traffic and all writers, and scale the API to
-zero using context `kind-deployment` as in the
-[cutover runbook](../../gitops/docs/local/database-migration.md#1-pause-and-back-up).
+zero using context `kind-deployment`:
+
+```sh
+kubectl --context kind-deployment -n myfastapiapp scale deployment/myfastapiapp-deployment --replicas=0
+kubectl --context kind-deployment -n myfastapiapp wait --for=delete pod -l app=myfastapiapp-pod --timeout=120s
+```
+
 Then open `./scripts/local-database.sh psql` and deliberately run:
 
 ```sql
@@ -132,7 +163,7 @@ For a fresh database, sync the entire app to run its selected image's migration
 Job and restore the API's declared replicas. Verify revision, readiness, new
 registration/login (or existing login after restore), then re-enable auto-sync.
 Passwords and the Docker volume are retained. This is independent of cluster
-teardown; `teardown-kind.sh --delete-database` targets only legacy laptop files.
+teardown, which preserves the Compose database.
 
 ## Version changes
 

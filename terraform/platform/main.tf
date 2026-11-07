@@ -14,8 +14,7 @@ resource "helm_release" "argocd" {
 
   values = [file("${path.module}/../../argocd/values.yaml")]
 
-  # Existing manifest installations need the reviewed Helm adoption procedure;
-  # routine Terraform applies must never take ownership or force replacement.
+  # Keep resource ownership explicit and avoid forced replacements.
   take_ownership = false
   force_update   = false
 

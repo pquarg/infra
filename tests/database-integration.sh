@@ -59,14 +59,7 @@ SQL
 "${client[@]}" pg_restore -h 127.0.0.1 -U myfastapiapp -d restore_check --no-owner --no-acl --single-transaction --exit-on-error < "$tmp/backup.dump"
 restored="$("${client[@]}" psql -h 127.0.0.1 -U myfastapiapp -d restore_check -X -Atqc 'SELECT value FROM public.retained_data')"
 [[ "$restored" == 'survives restore' ]]
-# Also restore a legacy superuser-owned archive using the restricted login.
-"${compose[@]}" exec -T postgres psql -X -U postgres -d myfastapiapp -v ON_ERROR_STOP=1 -c "CREATE TABLE legacy_owned (value text); INSERT INTO legacy_owned VALUES ('legacy');" >/dev/null
-"${compose[@]}" exec -T postgres pg_dump -U postgres -d myfastapiapp -Fc > "$tmp/legacy.dump"
-"${compose[@]}" exec -T postgres createdb -U postgres --owner=myfastapiapp legacy_check
-"${client[@]}" pg_restore -h 127.0.0.1 -U myfastapiapp -d legacy_check --no-owner --no-acl --single-transaction --exit-on-error < "$tmp/legacy.dump"
-owner="$("${client[@]}" psql -h 127.0.0.1 -U myfastapiapp -d legacy_check -X -Atqc "SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid = 'legacy_owned'::regclass")"
-[[ "$owner" == myfastapiapp ]]
 "${compose[@]}" down --volumes
 # The external volume survives even down --volumes.
 docker volume inspect "$volume" >/dev/null
-printf 'PostgreSQL host routing, app grants, restore guard, backup/restore, legacy ownership and external volume retention passed.\n'
+printf 'PostgreSQL host routing, app grants, restore guard, backup/restore, external volume retention passed.\n'

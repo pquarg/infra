@@ -13,6 +13,6 @@
 *.tfvars
 *.tfvars.json
 .terraform.tfstate.lock.info
-# Legacy renderer artifacts remain ignored while old checkouts migrate to Helm.
+# Keep generated artifacts out of version control.
 /.generated/
 __pycache__/

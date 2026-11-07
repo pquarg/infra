@@ -57,7 +57,7 @@ case "$action" in
     trap 'exit 130' INT
     trap 'exit 143' TERM
     "${app_client[@]}" pg_restore -h 127.0.0.1 -U myfastapiapp --dbname="$scratch" --no-owner --no-acl --exit-on-error --single-transaction < "$1"
-    printf 'Actual restore into disposable database succeeded. Check app behaviour after cutover too.\n' ;;
+    printf 'Actual restore into disposable database succeeded. Check app behaviour after recovery too.\n' ;;
   restore)
     [[ -f "$1" ]] || { printf 'Archive not found.\n' >&2; exit 1; }
     objects="$("${app_client[@]}" psql -h 127.0.0.1 -U myfastapiapp -d myfastapiapp -X -Atqc "SELECT count(*) FROM pg_depend WHERE refclassid = 'pg_namespace'::regclass AND refobjid = 'public'::regnamespace")"

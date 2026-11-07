@@ -7,9 +7,6 @@ trap 'rm -rf -- "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/workspace/infra-local/scripts" "$tmp/workspace/infra-local/terraform/platform"
 cp "$root/scripts/teardown-kind.sh" "$tmp/workspace/infra-local/scripts/"
 printf 'retained state\n' > "$tmp/workspace/infra-local/terraform/platform/terraform.tfstate"
-helper="$tmp/workspace/gitops/apps/myfastapiapp/overlays/local/postgres/delete-data.py"
-mkdir -p "$(dirname "$helper")"
-touch "$helper"
 cat > "$tmp/bin/fake" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -19,22 +16,8 @@ printf '\n' >> "$LOG"
 case "${0##*/}" in
   docker)
     if [[ "$CASE" == docker-failure ]]; then exit 41; fi
-    if [[ "$*" == inspect* ]]; then
-      case "$CASE" in
-        missing-mount) ;;
-        ambiguous-mount) printf '%s\n%s\n' "$DATA_DIRECTORY" /different/myfastapiapp-postgres/pgdata ;;
-        *) printf '%s\n' "$DATA_DIRECTORY" ;;
-      esac
-    fi ;;
-  python3)
-    case "${!#}" in
-      --dry-run) if [[ "$CASE" == helper-failure ]]; then exit 47; fi ;;
-      --delete)
-        [[ -f "$REMOVED" ]] || exit 92
-        if [[ "$CASE" == cleanup-failure ]]; then exit 48; fi
-        touch "$DATABASE_REMOVED" ;;
-      *) exit 93 ;;
-    esac ;;
+    [[ "$*" == info ]] || exit 94
+    ;;
   kind)
     case "$*" in
       'get clusters')
@@ -57,7 +40,7 @@ case "${0##*/}" in
       *'get crd '*) if [[ "$CASE" != fresh ]]; then echo crd/applications.argoproj.io; fi ;;
       *'get deployment '*) echo deployment.apps/argocd-applicationset-controller ;;
       *'get applications -o yaml'*) echo 'kind: ApplicationList' ;;
-      *'get applications -o name'*) printf 'application.argoproj.io/staging-root\napplication.argoproj.io/staging-myfastapiapp\n' ;;
+      *'get applications -o name'*) printf 'application.argoproj.io/root\napplication.argoproj.io/staging-myfastapiapp\n' ;;
       *'get applications -o go-template='*) if [[ "$CASE" == sync ]]; then echo staging-myfastapiapp; fi ;;
       *'get jobs '*) if [[ "$CASE" == job ]]; then echo myfastapiapp/myfastapiapp-migrate; fi ;;
       *' wait '*) if [[ "$CASE" == wait-failure ]]; then exit 44; fi ;;
@@ -69,18 +52,17 @@ case "${0##*/}" in
 esac
 FAKE
 chmod +x "$tmp/bin/fake"
-for tool in docker kind kubectl python3; do ln -s fake "$tmp/bin/$tool"; done
+for tool in docker kind kubectl; do ln -s fake "$tmp/bin/$tool"; done
 fail() { cat "$tmp/out" >&2; cat "$tmp/log" >&2; printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 run() {
   scenario="$1"
   input="$2"
   shift 2
-  rm -f "$tmp/removed" "$tmp/database-removed"
+  rm -f "$tmp/removed"
   : > "$tmp/log"
   result=0
   printf '%s\n' "$input" | PATH="$tmp/bin:$PATH" CASE="$scenario" LOG="$tmp/log" \
     REMOVED="$tmp/removed" HOME="$tmp/private-home/$scenario" \
-    DATABASE_REMOVED="$tmp/database-removed" DATA_DIRECTORY="$tmp/storage with spaces/myfastapiapp-postgres/pgdata" \
     INFRA_LOCAL_KUBECONFIG='/tmp/explicit kubeconfig' KUBECONFIG=/ambient \
     bash "$tmp/workspace/infra-local/scripts/teardown-kind.sh" "$@" > "$tmp/out" 2>&1 || result=$?
 }
@@ -139,31 +121,6 @@ for scenario in delete-failure still-present; do
   [[ "$result" != 0 ]] || fail 'report failed deletion'
   if grep -q '^Cluster example removed\.' "$tmp/out"; then fail 'must not claim success'; fi
 done
-run database-preview '' example --delete-database --dry-run
-[[ "$result" == 0 ]] || fail 'database preview'
-assert_read_only
-[[ ! -f "$tmp/database-removed" ]] || fail 'preview must keep database'
-run database-cancel 'delete example' example --delete-database
-[[ "$result" != 0 ]] || fail 'database deletion needs stronger confirmation'
-assert_read_only
-for scenario in missing-mount ambiguous-mount helper-failure absent; do
-  run "$scenario" 'delete example and database' example --delete-database
-  [[ "$result" != 0 ]] || fail "$scenario database preflight"
-  assert_no_delete
-  [[ ! -f "$tmp/database-removed" ]] || fail 'preflight must keep database'
-done
-for scenario in backup-failure wait-failure sync job drain-failure delete-failure still-present; do
-  run "$scenario" 'delete example and database' example --delete-database
-  [[ "$result" != 0 ]] || fail "$scenario must prevent database deletion"
-  [[ ! -f "$tmp/database-removed" ]] || fail "$scenario must keep database"
-  if grep -q '^python3 .*<--delete>' "$tmp/log"; then fail 'no data deletion before verified cluster removal'; fi
-done
-run database-success 'delete example and database' example --delete-database
-[[ "$result" == 0 && -f "$tmp/removed" && -f "$tmp/database-removed" ]] || fail 'delete cluster and database'
-awk '/^kind <delete>/ {removed=1} /^python3 .*<--delete>/ {if (!removed) exit 1; cleaned=1} END {if (!cleaned) exit 1}' "$tmp/log" || fail 'database deletion ordering'
-grep -q "<--data-directory> <$tmp/storage with spaces/myfastapiapp-postgres/pgdata>" "$tmp/log" || fail 'path with spaces must be one argument'
-[[ -n "$(find "$tmp/private-home/database-success" -name database-directory.txt -perm 0600)" ]] || fail 'save private data path for retry'
-run cleanup-failure 'delete example and database' example --delete-database
-[[ "$result" != 0 && -f "$tmp/removed" && ! -f "$tmp/database-removed" ]] || fail 'report partial teardown'
-grep -q 'Cluster removed, but database cleanup failed' "$tmp/out" || fail 'explain database cleanup failure'
+run unsupported-option 'delete example' example --delete-database
+[[ "$result" != 0 && ! -s "$tmp/log" ]] || fail 'reject unsupported database deletion before tools'
 printf 'Local teardown safety tests passed.\n'

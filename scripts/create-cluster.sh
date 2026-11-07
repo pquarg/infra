@@ -24,7 +24,7 @@ for required_command in docker kind kubectl; do
   fi
 done
 if [[ ! -f "$config" ]]; then
-  printf 'Error: missing config %s. Copy kind/cluster.example.yaml first; preserve existing legacy mount configuration.\n' "$config" >&2
+  printf 'Error: missing config %s. Copy kind/cluster.example.yaml first.\n' "$config" >&2
   exit 1
 fi
 docker info > /dev/null
