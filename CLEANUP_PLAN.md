@@ -3,8 +3,6 @@
 This guide summarizes removal scopes for the current foundation/platform/edge
 layout. Use [teardown/rebuild](docs/teardown.md) for the automated command and the
 [manual retention runbook](../gitops/docs/aws/teardown.md) for reviewed stage plans.
-Existing single-state installations need the separate
-[state migration](docs/state-migration.md) before using these procedures.
 
 This guide describes how to remove resources defined by this deployment. It
 does not record deployment status. Before starting, establish which resources

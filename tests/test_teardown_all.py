@@ -336,11 +336,11 @@ class ConfigTests(unittest.TestCase):
 
 
 class StageTests(unittest.TestCase):
-    def test_legacy_record_and_changed_scope_are_rejected_before_commands(self):
+    def test_invalid_record_and_changed_scope_are_rejected_before_commands(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)
             (path / "progress.json").write_text(json.dumps({"project": teardown.PROJECT, "completed": []}))
-            with self.assertRaisesRegex(teardown.Failure, "Legacy"):
+            with self.assertRaisesRegex(teardown.Failure, "Invalid teardown record"):
                 teardown.Teardown(path)
             (path / "progress.json").unlink()
             job = teardown.Teardown(path)
@@ -351,7 +351,7 @@ class StageTests(unittest.TestCase):
     def test_misplaced_and_duplicate_bindings_are_rejected(self):
         states = {"foundation": {"resources": [state_resource("helm_release", "argocd", {"id": "argocd"})]},
                   "platform": {"resources": []}, "edge": {"resources": []}}
-        with self.assertRaisesRegex(teardown.Failure, "migration"):
+        with self.assertRaisesRegex(teardown.Failure, "ownership"):
             teardown.validate_stage_states(states)
         states["platform"] = states["foundation"]
         states["foundation"] = {"resources": []}

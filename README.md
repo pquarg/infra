@@ -18,15 +18,12 @@ Ingress; Terraform never owns that ALB or its targets.
 
 All keys use the existing protected/versioned S3 bucket
 `deployment-project-tfstate-245361883993-eu-north-1`, encryption and native locking.
-Provider locks and all module/chart/image pins are preserved. The repository
-root is no longer an executable Terraform root. Existing installations must
-complete [state migration](docs/state-migration.md) before any stage apply.
+Provider locks and module/chart/image pins are committed. Run Terraform from
+the owning stage directory; the repository root contains no Terraform configuration.
 
 ## Setup and changes
 
-Application deployments now use [one GitOps repository](../gitops/README.md).
-Existing registrations follow [repository cutover](../gitops/docs/repository-migration.md);
-this consolidation requires no infrastructure apply.
+Application deployments use [the GitOps repository](../gitops/README.md).
 
 Install Terraform `1.17.x` (CI `1.17.1`), AWS CLI v2, kubectl, Python 3 and Node.js
 for tests. Use the existing AWS profile and authenticate it separately.
@@ -37,8 +34,7 @@ cp -n config/operator.tfvars.example config/operator.tfvars
 chmod 600 config/operator.tfvars
 ```
 
-Replace its example with your approved public IPv4 `/32` addresses. During
-migration copy existing values rather than changing restrictions. Foundation
+Replace its example with your approved public IPv4 `/32` addresses. Foundation
 and edge read this same file; updating it requires reviewing/applying **both**
 stages to keep API and CloudFront restrictions identical. No passwords belong
 in it. Keep real variables, state, plans and credentials out of Git.
@@ -62,9 +58,8 @@ association. Values/pins live in `argocd/` and `load-balancer-controller/`, matc
 local's controller values-file layout.
 
 Both environments select Argo CD chart `10.11.6` (Argo CD `v3.5.6`) and its default
-Dex/Redis images. The matching local kind examples pin Kubernetes `1.36.4` by
-digest, sharing EKS's configured `1.36` minor version. This alignment changes
-local configuration; AWS already selected this chart. Controller upgrades use a
+Dex/Redis images. The local kind example pins Kubernetes `1.36.4` by
+digest, sharing EKS's configured `1.36` minor version. Controller upgrades use a
 reviewed platform plan/apply, independently of app GitOps. See the
 [local version upgrade notes](../infra-local/docs/terraform.md#shared-versions-and-upgrades).
 
@@ -95,7 +90,7 @@ Validation uses temporary configuration copies, backend-disabled init and
 committed locks. It runs Terraform format/validate, shell stage safety checks,
 CloudFront function tests and teardown regressions. It downloads pinned modules/
 providers and needs internet, but no AWS credentials or live cluster. CI runs the
-same checks. Passing checks do not prove deployment or migration success.
+same checks. Passing checks do not prove deployment success.
 
 For live acceptance check controller/app health, database data/authentication,
 ALB target health, HTTPS, allowed/denied addresses and actual log receipt; finish
@@ -109,8 +104,8 @@ Use [teardown/rebuild](docs/teardown.md) and
 [retention choices](CLEANUP_PLAN.md). Across roots, Terraform cannot enforce
 deletion dependencies: edge must go first, then app Ingresses while the controller
 runs, then platform, then foundation. Backend deletion is a separately selected
-last scope. Legacy one-state teardown records cannot be resumed by this version.
+last scope.
 
-Read [architecture](docs/architecture.md), [state migration](docs/state-migration.md),
+Read [architecture](docs/architecture.md),
 [full deployment walkthrough](../gitops/docs/aws/deploy-from-scratch.md) and
 [public access verification](../gitops/docs/aws/public-access.md) before live work.

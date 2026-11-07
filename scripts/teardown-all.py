@@ -69,7 +69,7 @@ def validate_stage_states(states):
             expected = ("platform" if address in PLATFORM_ADDRESSES else
                         "edge" if edge_address(address) else "foundation")
             if stage != expected or address == "aws_s3_bucket.terraform_state":
-                raise Failure(f"Unexpected {address} in {stage}; finish state migration first.")
+                raise Failure(f"Unexpected {address} in {stage}; inspect state ownership before teardown.")
             for instance in resource.get("instances", []):
                 identifier = instance.get("attributes", {}).get("id")
                 if identifier:
@@ -166,8 +166,8 @@ class Teardown:
             "state_keys": STATE_KEYS, "delete_backend": delete_backend,
         }
         if self.record.get("version") != RECORD_VERSION or self.record.get("state_keys") != STATE_KEYS:
-            raise Failure("Legacy or incompatible teardown record. Use its matching old implementation "
-                          "or an explicitly validated conversion; do not resume it as a staged teardown.")
+            raise Failure("Invalid teardown record: expected the current version and stage state keys. "
+                          "Inspect the recovery artifacts before resuming.")
         if self.record.get("delete_backend") != delete_backend:
             raise Failure("Resume must use the original --delete-backend scope.")
         if self.record.get("project") != PROJECT:

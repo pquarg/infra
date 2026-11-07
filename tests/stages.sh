@@ -28,7 +28,7 @@ case "${0##*/}" in
       if [[ "$CASE" == context ]]; then echo https://wrong; else echo https://eks.example; fi
     elif [[ "$*" == *'rollout status'* && "$CASE" == controller ]]; then exit 42; fi ;;
   terraform)
-    if [[ "$*" == *'state list'* && "$CASE" == legacy ]]; then echo helm_release.argocd; fi ;;
+    if [[ "$*" == *'state list'* && "$CASE" == misplaced ]]; then echo helm_release.argocd; fi ;;
 esac
 FAKE
 chmod +x "$tmp/bin/fake"
@@ -52,8 +52,8 @@ for scenario in account context identity controller alb unhealthy; do
   if grep -q '<plan>' "$tmp/log"; then fail 'no plan on failed prerequisites'; fi
 done
 for stage in foundation platform edge; do
-  run legacy "$stage"
-  [[ "$result" != 0 ]] || fail 'legacy state must stop'
-  if grep -q '<plan>' "$tmp/log"; then fail 'no plan with legacy owners'; fi
+  run misplaced "$stage"
+  [[ "$result" != 0 ]] || fail 'misplaced state must stop'
+  if grep -q '<plan>' "$tmp/log"; then fail 'no plan with misplaced owners'; fi
 done
 printf 'AWS stage checks passed.\n'

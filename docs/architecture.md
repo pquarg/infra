@@ -35,20 +35,18 @@ S3 access logs remain private/encrypted with 14-day expiry and omit query string
 cookies, authorization, referer and viewer IPs. Global-service log delivery stays
 explicitly in `us-east-1`; regional resources stay `eu-north-1`. EKS logs retain
 seven-day expiry. This lab keeps one app replica, a single-AZ DB and shared NAT;
-no policy, availability or version upgrade is part of the ownership refactor.
+review availability, security and version changes through the owning stage plan.
 
 ## Stage interfaces and state
 
 All state uses the same existing encrypted/locked/versioned bucket, with keys:
 
 - `bootstrap/terraform.tfstate`: backend bootstrap, unchanged.
-- `dev/terraform.tfstate`: foundation, retaining the old key and resource addresses.
+- `dev/terraform.tfstate`: foundation.
 - `dev/platform/terraform.tfstate`: the two Helm releases.
 - `dev/edge/terraform.tfstate`: CloudFront and logs.
 
-The directory move alone does not recreate a resource. Existing bindings need
-the [audited transfer](state-migration.md). Stage discovery uses AWS data sources
-and small non-secret inputs rather than `terraform_remote_state`. Platform
+Stage discovery uses AWS data sources and small non-secret inputs rather than `terraform_remote_state`. Platform
 reads EKS endpoint/CA/VPC metadata from the selected cluster and uses AWS token
 exec auth. Edge discovers that cluster/VPC and the named frontend SG, then checks
 the ALB is internal/IPv4/in the expected VPC with that group attached.
@@ -78,4 +76,4 @@ express a Terraform dependency graph for removal: destroy edge, pause app
 reconciliation/remove Ingresses, wait for the running controller to remove ALBs/
 targets, remove platform, remove foundation, then optionally remove backend last.
 See [teardown](teardown.md). Validation runs offline tests and backend-disabled
-Terraform checks; it neither establishes health nor authorizes a live migration.
+Terraform checks; it does not establish runtime health.

@@ -18,8 +18,8 @@ state backend by default. For data/log retention use the
 `--yes` skips typed confirmation and has the same destructive meaning. It must
 be deliberately selected. Do not use it for routine checks. The CLI requires
 Terraform, AWS CLI v2, kubectl, Python 3, the configured profile/account/Region,
-and ignored `config/operator.tfvars`. Finish the [state transfer](state-migration.md)
-first. Misplaced stage bindings and legacy records are rejected before deletion.
+and ignored `config/operator.tfvars`. Misplaced stage bindings and invalid
+progress records are rejected before deletion.
 
 ## Stage order and private artifacts
 
@@ -58,10 +58,8 @@ command lock prevents two invocations in this checkout. Freeze other applies.
 
 ## Failure and resume
 
-Progress records have version `2`, explicit state keys and backend scope. A
-missing/legacy version is rejected: use the old implementation at its recorded
-Git revision for a legacy run or perform a separately validated conversion.
-Never reinterpret its completed phases as staged teardown phases.
+Progress records require version `2`, the expected state keys and the original
+backend scope. Records that fail these checks are rejected before commands run.
 
 Fix the blocker and use the printed resume command with the original scope:
 
@@ -107,6 +105,6 @@ If the backend was explicitly removed, create a new private local bootstrap copy
 ```
 
 Offline tests cover plan scopes, phase ordering, failure/resume, missing stages,
-state/backend selection, controller availability, legacy record rejection and
+state/backend selection, controller availability, invalid record rejection and
 local bootstrap handoff. Backend-disabled configuration checks cannot prove live
-removal/readiness. Never run a destroy to test this refactor.
+removal/readiness. Never run a destroy as a validation check.

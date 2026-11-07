@@ -8,14 +8,13 @@ case "$stage" in foundation|platform|edge) shift ;; *) printf 'Usage: %s foundat
 umask 077
 stage_root="$root/terraform/$stage"
 terraform -chdir="$stage_root" init -input=false -lockfile=readonly
-# The retained foundation key may still contain the old monolithic owners.
-# Refuse to plan until the explicit transfer runbook has dealt with each one.
+# Check stage ownership before producing a plan.
 if [[ "$stage" != foundation ]]; then
   terraform -chdir="$root/terraform/foundation" init -input=false -lockfile=readonly
 fi
 bindings="$(terraform -chdir="$root/terraform/foundation" state list)"
 if grep -Eq '^(helm_release\.|aws_cloudfront_|aws_cloudwatch_log_delivery|aws_s3_bucket[^.]*\.cloudfront_logs)' <<< "$bindings"; then
-  printf 'Error: legacy platform/edge bindings remain in foundation. Follow docs/state-migration.md before any apply.\n' >&2
+  printf 'Error: platform/edge bindings are in foundation state. Inspect state ownership before any apply; see docs/architecture.md#stage-interfaces-and-state.\n' >&2
   exit 1
 fi
 
