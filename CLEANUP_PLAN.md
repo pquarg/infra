@@ -1,10 +1,10 @@
 # Cleanup order and retention choices
 
-This is a historical cleanup record for the former single-state layout.
-For current stage-aware removal, scopes and retention decisions use
-[teardown/rebuild](docs/teardown.md) and the
-[manual retention runbook](../gitops/docs/aws/teardown.md). Do not run the old
-root/target commands below. State migration is separate from cleanup.
+This guide summarizes removal scopes for the current foundation/platform/edge
+layout. Use [teardown/rebuild](docs/teardown.md) for the automated command and the
+[manual retention runbook](../gitops/docs/aws/teardown.md) for reviewed stage plans.
+Existing single-state installations need the separate
+[state migration](docs/state-migration.md) before using these procedures.
 
 This guide describes how to remove resources defined by this deployment. It
 does not record deployment status. Before starting, establish which resources
@@ -13,21 +13,23 @@ and Terraform states exist, and choose what data to retain.
 ## Choose a removal procedure
 
 Use [single-command complete removal](docs/teardown.md) to delete the deployment,
-including **all database snapshots/backups, access logs, and the state backend**:
+including **all this lab database's snapshots/backups and access logs**.
+The state backend is retained by default:
 
 ```sh
 ./scripts/teardown-all.py
 ```
 
 The script uses private configuration copies, pauses GitOps reconciliation,
-checks plans and removal, and deletes the backend last using local state. It
-supports read-only AWS preflight with `--check`, unattended confirmation with
-`--yes`, and recovery of an interrupted run with `--resume DIRECTORY`. See its
+checks plans and removal, and retains the backend unless `--delete-backend` is
+explicitly selected. That broader scope deletes versioned backend data last using
+local bootstrap state. It supports read-only AWS preflight with `--check`,
+unattended confirmation with `--yes`, and recovery of an interrupted run with `--resume DIRECTORY`. See its
 runbook for prerequisites, scope, and recovery; it is not a project-wide sweeper.
 
 Use the [manual teardown walkthrough](../gitops/docs/aws/teardown.md) when you
 want database/log retention choices and to keep the state backend by default.
-Its keep-logs branch retains the bucket outside root state and documents
+Its keep-logs branch retains the bucket outside edge state and documents
 importing it on a later rebuild. The order below describes this manual procedure.
 
 ## Configuration safeguards
@@ -59,19 +61,19 @@ instead of starting a separate manual cleanup.
    load balancer controller to delete its ALB, listeners, target groups, and
    controller-owned security-group resources. Deleting an Argo CD registration
    alone does not ensure app cleanup: the ApplicationSet preserves resources.
-4. Adjust RDS deletion safeguards according to the chosen backup decision.
-   Review a fresh root removal plan after the controller-managed ALB is gone.
-5. Remove the remaining root infrastructure. Preserve the log bucket or
-   explicitly empty it according to the retention decision; Terraform refuses
-   to delete a nonempty bucket by default. Keep the separate state bootstrap
-   unless its removal is explicitly intended.
+4. After the controller-managed ALBs and targets are gone, remove platform's
+   two Helm releases while EKS and its AWS prerequisites still exist.
+5. Adjust RDS deletion safeguards in a private foundation copy according to the
+   chosen backup decision, then review a fresh full foundation destroy plan.
+   The log bucket was already retained or deleted during edge removal; keep the
+   separate state bootstrap unless its removal is explicitly intended.
 6. Verify EKS/workers/disks, RDS and the chosen snapshots/backups, CloudFront
    distribution/VPC origin, ALBs/targets, NAT/EIP, VPC/interfaces, and logs.
    Record retained resources and any remaining charges. Retained storage can
    incur charges even when the application is removed.
 
-Do not run root destroy before the explicit app/ALB cleanup. Terraform looks
-up the controller-owned ALB but does not manage its lifecycle.
+Do not destroy platform or foundation before explicit app/ALB cleanup. Terraform
+looks up the controller-owned ALB but does not manage its lifecycle.
 
 ## State and rebuilding
 

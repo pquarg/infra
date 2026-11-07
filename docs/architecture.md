@@ -65,7 +65,7 @@ remains pinned in [`policies/`](../policies/); functions/tests remain at the roo
 
 1. Ensure the backend exists, then review/apply a full foundation plan.
 2. Verify endpoint, nodes and Pod Identity prerequisites; review/apply platform.
-3. Follow `gitops` credential/setup steps, register `aws-root`, manually sync
+3. Follow `gitops` credential/setup steps, register `root`, manually sync
    `aws-myfastapiapp` including its migration hook.
 4. Wait for an Active controller-created ALB with healthy targets, then review/
    apply edge. Verify HTTPS, app/database authentication, address restrictions and

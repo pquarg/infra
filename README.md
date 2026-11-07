@@ -61,6 +61,13 @@ The prerequisite checker verifies the Kubernetes endpoint and Pod Identity agent
 association. Values/pins live in `argocd/` and `load-balancer-controller/`, matching
 local's controller values-file layout.
 
+Both environments select Argo CD chart `10.11.6` (Argo CD `v3.5.6`) and its default
+Dex/Redis images. The matching local kind examples pin Kubernetes `1.36.4` by
+digest, sharing EKS's configured `1.36` minor version. This alignment changes
+local configuration; AWS already selected this chart. Controller upgrades use a
+reviewed platform plan/apply, independently of app GitOps. See the
+[local version upgrade notes](../infra-local/docs/terraform.md#shared-versions-and-upgrades).
+
 Follow [gitops setup](../gitops/docs/aws/setup.md) to provision credentials,
 register apps and manually sync them. Wait for an Active ALB with healthy targets
 before edge (the checker refuses a missing or unhealthy origin):
