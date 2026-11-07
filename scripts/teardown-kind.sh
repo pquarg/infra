@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage: teardown-kind.sh [cluster] [--dry-run] [--delete-database]
-Default cluster: argocd-postgres. Targets only that local kind cluster.
+Default cluster: deployment. Targets only that local kind cluster.
 
 Preview with --dry-run. Otherwise type "delete <cluster>" when prompted.
 Before confirming, stop external writers, back up each database and verify
@@ -21,7 +21,7 @@ Uses INFRA_LOCAL_KUBECONFIG or $HOME/.kube/config, with an explicit kind context
 USAGE
 }
 
-cluster=argocd-postgres
+cluster=deployment
 cluster_selected=false
 dry_run=false
 delete_database=false

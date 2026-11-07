@@ -115,7 +115,7 @@ run the app's migration/revision, readiness and existing-login checks.
 This deletes app accounts, sessions and schema history. Back up and verify a
 restore first if the data may be needed. Pause Argo CD app auto-sync, wait for
 active syncs/migration Jobs, stop traffic and all writers, and scale the API to
-zero using context `kind-argocd-postgres` as in the
+zero using context `kind-deployment` as in the
 [cutover runbook](../../gitops/docs/local/database-migration.md#1-pause-and-back-up).
 Then open `./scripts/local-database.sh psql` and deliberately run:
 

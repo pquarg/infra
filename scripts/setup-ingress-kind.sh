@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   printf 'Usage: %s [cluster]\n' "${0##*/}"
-  printf 'Default: cluster=argocd-postgres; requires Argo CD in namespace argocd\n'
+  printf 'Default: cluster=deployment; requires Argo CD in namespace argocd\n'
   printf 'Requires kind port mapping 127.0.0.1:80 -> 30080; see kind/cluster.example.yaml.\n'
 }
 
@@ -18,7 +18,7 @@ if (( $# > 1 )); then
   exit 1
 fi
 
-cluster="${1:-argocd-postgres}"
+cluster="${1:-deployment}"
 context="kind-${cluster}"
 kubeconfig="${INFRA_LOCAL_KUBECONFIG:-$HOME/.kube/config}"
 kube=(kubectl "--kubeconfig=$kubeconfig" "--context=$context")

@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   printf 'Usage: %s [cluster]\n' "${0##*/}"
-  printf 'Default: cluster=argocd-postgres; requires an existing kind cluster.\n'
+  printf 'Default: cluster=deployment; requires an existing kind cluster.\n'
   printf 'Runs one reviewed Terraform apply: pinned Argo CD and Traefik Helm releases.\n'
   printf 'For an existing installation, first follow docs/terraform.md#adopt-an-existing-installation.\n'
   printf 'Does not register or deploy apps from gitops.\n'
@@ -23,7 +23,7 @@ for required_command in kubectl kind docker terraform; do
   fi
 done
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-cluster="${1:-argocd-postgres}"
+cluster="${1:-deployment}"
 if [[ ! "$cluster" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
   printf 'Error: invalid kind cluster name.\n' >&2
   exit 1

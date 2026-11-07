@@ -4,14 +4,44 @@ kind owns the cluster, node, ports and storage mounts. One local Terraform root,
 `terraform/platform`, owns real Helm releases `argocd/argocd` and `traefik/traefik`.
 Argo CD owns application resources from `gitops`. Terraform reads this
 checkout; there is no platform Git watcher, AWS provider/backend, Kubernetes
-provider or local Python requirement.
+provider or shared AWS state. See [prerequisites](../README.md#prerequisites)
+for the required tools.
 
-Pins remain Argo CD chart `10.11.0` (Argo CD `v3.5.5`), Traefik `42.0.0`, Helm
-provider `3.3.0`. Argo CD's Dex/Redis image overrides, Secret behavior and tracking
-label are unchanged. Traefik retains standard Ingress support, class `traefik`,
+Pins are Argo CD chart `10.11.6` (Argo CD `v3.5.6`), Traefik `42.0.0`, Helm
+provider `3.3.0`. Argo CD uses the same chart and default component images as AWS;
+local's Secret settings and tracking label are preserved. Traefik retains
+standard Ingress support, class `traefik`,
 NodePort `30080`, disabled dashboard/HTTPS exposure and disabled Traefik CRDs.
 
+## Shared versions and upgrades
+
+Both infrastructure repos select chart `10.11.6`. Its defaults select Argo CD
+`v3.5.6`, Dex `v2.46.1` and Redis `8.6.4-alpine`. The old local Dex/Redis image
+overrides have been removed so local tests exercise AWS's selected images.
+The chart version pins these defaults; see its
+[versioned values](https://github.com/argoproj/argo-helm/blob/argo-cd-10.11.6/charts/argo-cd/values.yaml).
+Local retains `application.instanceLabelKey: app.kubernetes.io/instance` for its
+existing app tracking; matching images does not require changing that identity.
+
+For an existing Helm-managed platform, review the full plan using the commands
+below before applying. This alignment updates Argo CD, Dex and Redis locally,
+including their Pod restarts. Terraform owns the upgrade; publishing app GitOps
+does not apply it. Afterwards verify all Argo CD controller rollouts, admin login,
+Git access, app registrations, sync policies, endpoints and retained app data.
+Review any upstream chart/known-host changes in the rendered manifests too.
+
+If controller ownership has not yet been transferred, complete adoption with the
+installation's recorded compatible chart/images first, using its preserved
+checkout. Then review this version alignment as a separate platform upgrade.
+The adoption examples below read the selected checkout's pins; do not use an
+image upgrade to bypass ownership checks. Keep credentials and state backups.
+
 ## Inspect and apply manually
+
+The default cluster is `deployment`, context `kind-deployment`. Before using
+these commands for an older `argocd-postgres` cluster, follow
+[existing-cluster selection](../README.md#existing-clusters) to preserve its
+private `cluster_name` override and use its actual context in Helm/kubectl commands.
 
 Use one cluster per checkout/state. Providers always use `kind-<cluster_name>`
 and the single `kubeconfig_path`, never the ambient context. Configure another
@@ -73,8 +103,8 @@ from the configuration-free repository root:
 ```sh
 terraform state list -state=terraform/argocd/terraform.tfstate
 terraform state list -state=terraform/platform/terraform.tfstate
-helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres -n argocd list --all
-helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres -n traefik list --all
+helm --kubeconfig "$HOME/.kube/config" --kube-context kind-deployment -n argocd list --all
+helm --kubeconfig "$HOME/.kube/config" --kube-context kind-deployment -n traefik list --all
 ```
 
 Skip absent state files. Preserve the final platform state at its existing path.
@@ -124,7 +154,7 @@ cluster-free validator.
    ```sh
    umask 077
    mkdir -p "$backup_dir"
-   kube=(kubectl "--kubeconfig=$HOME/.kube/config" --context=kind-argocd-postgres)
+   kube=(kubectl "--kubeconfig=$HOME/.kube/config" --context=kind-deployment)
    "${kube[@]}" -n argocd get applications,applicationsets,appprojects,configmaps,secrets \
      -o yaml > "$backup_dir/argocd-resources.yaml"
    ```
@@ -134,9 +164,20 @@ cluster-free validator.
    `argocd-secret`, `argocd-redis` and `argocd-notifications-secret` data privately
    so you can compare them afterwards. Preserve Git repository credentials and
    the changed admin password; do not replace them with fresh-install values.
-3. Render the chart using the command above into a private file and compare it
-   with the existing installation. Transfer custom ConfigMap settings, RBAC,
-   known hosts and certificates into the corresponding chart values first.
+3. Render the pinned chart into a private file and compare it with the existing
+   installation:
+
+   ```sh
+   helm template argocd argo-cd \
+     --repo https://argoproj.github.io/argo-helm \
+     --version "$(cat argocd/chart-version.txt)" \
+     --namespace argocd --values argocd/values.yaml --include-crds \
+     > "$backup_dir/argocd-chart.yaml"
+   ```
+
+   This renders configuration without applying it. Transfer custom ConfigMap
+   settings, RBAC, known hosts and certificates into the corresponding chart
+   values first.
    Keep `configs.secret` credential values unset: the chart's default
    `argocd-secret` template omits data when none is supplied, leaving Argo CD's
    existing password, signing key and TLS data intact. Git credential Secrets
@@ -160,7 +201,7 @@ cluster-free validator.
 5. Adopt the remaining installation objects and create the chart's controllers:
 
    ```sh
-   helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres \
+   helm --kubeconfig "$HOME/.kube/config" --kube-context kind-deployment \
      upgrade --install argocd argo-cd \
      --repo https://argoproj.github.io/argo-helm \
      --version "$(cat argocd/chart-version.txt)" \
@@ -212,7 +253,7 @@ cluster-free validator.
    the registration alone; do not run an Argo CD cascade delete:
 
    ```sh
-   kube=(kubectl "--kubeconfig=$HOME/.kube/config" --context=kind-argocd-postgres)
+   kube=(kubectl "--kubeconfig=$HOME/.kube/config" --context=kind-deployment)
    "${kube[@]}" -n argocd patch application traefik --type=merge \
      -p '{"spec":{"syncPolicy":{"automated":null}}}'
    # Wait for operationState to be absent or completed, then inspect finalizers.
@@ -237,7 +278,7 @@ cluster-free validator.
    ```sh
    helm pull traefik --repo https://traefik.github.io/charts \
      --version "$(cat traefik/chart-version.txt)" --destination "$backup_dir"
-   helm --kubeconfig "$HOME/.kube/config" --kube-context kind-argocd-postgres \
+   helm --kubeconfig "$HOME/.kube/config" --kube-context kind-deployment \
      upgrade --install traefik "$backup_dir/traefik-$(cat traefik/chart-version.txt).tgz" \
      --namespace traefik \
      --values traefik/values.yaml --skip-crds --take-ownership \
@@ -290,9 +331,12 @@ first adoption deliberately does not.
 
 The validator uses temporary copies and backend-disabled init with committed
 locks. It renders both charts, checks schemas/Bash and runs bootstrap safety tests.
-It requires network access, Helm 3, Terraform, kubectl and kubeconform, but no
-cluster, Python or AWS credentials. It does not validate kind YAML, CRD semantics,
-live plans, Helm adoption, credentials, application data or runtime health.
+It requires network access, Helm 3, Terraform, kubectl, kubeconform and Docker
+Compose, but no running cluster, Docker daemon or AWS credentials.
+It also checks Compose configuration and runs database and teardown safety
+tests; see [validation details](../README.md#validate-and-update). It does not
+validate kind YAML, CRD semantics, live plans, Helm adoption, credentials,
+application data or runtime health.
 
 References: [Helm 3 upgrade](https://v3.helm.sh/docs/helm/helm_upgrade/),
 [Helm provider import](https://github.com/hashicorp/terraform-provider-helm/blob/v3.3.0/docs/resources/release.md),

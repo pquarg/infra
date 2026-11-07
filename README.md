@@ -13,7 +13,7 @@ deployment-project/
   infra-local/                  # This repository
     kind/cluster.example.yaml    # Cluster and localhost ingress port
     database/                   # Separate deployment PostgreSQL Compose service
-    argocd/chart-version.txt     # Helm chart 10.11.0 (Argo CD v3.5.5)
+    argocd/chart-version.txt     # Helm chart 10.11.6 (Argo CD v3.5.6), matching AWS
     argocd/values.yaml           # Argo CD settings
     traefik/                    # Chart 42.0.0 and exact shared ingress values
     terraform/platform/         # One local state: Argo CD and Traefik Helm releases
@@ -32,37 +32,20 @@ application deployments; a platform change takes effect after a reviewed Terrafo
 apply. Read [the Terraform guide](docs/terraform.md) before adopting an existing
 installation. kind remains responsible for the cluster, ports and storage mounts.
 
-## Guided local setup
-
-With the prerequisites below installed and Docker Desktop running:
-
-```sh
-./scripts/setup-local.sh --check
-./scripts/setup-local.sh
-```
-
-This repeatable entry point prepares the separate database, creates/reuses kind,
-runs the reviewed Terraform bootstrap, provisions app/Git connection Secrets,
-builds and loads the selected app image, checks Pod database connectivity, registers
-local GitOps and verifies migrations, app sync and HTTP readiness. It asks for a
-read-only GitHub deploy-key file when Argo CD has no existing Git credentials.
-See [setup details and recovery](docs/setup-local.md), including one-time key setup.
-It preserves existing configuration/passwords and stops at legacy migration or
-credential mismatches. The manual steps below remain available.
-
 ## Prerequisites
 
 Install Docker Desktop (and start it), kind, kubectl and Terraform
 `1.17.x` (CI uses `1.17.1`). The platform root pins the Helm provider to `3.3.0` and has a committed
 provider lock file. The existing deployment
 validation targets Kubernetes `1.36.0`,
-kubectl `v1.36.1`, kind `v0.33.0`; the cluster example uses kind's default node
-image. For validation also install Helm 3 (CI uses `v3.19.0`) and kubeconform
+kubectl `v1.36.1`, kind `v0.33.0`. Both kind examples pin the release's
+`kindest/node:v1.36.4` image by SHA-256 digest, matching EKS's configured `1.36`
+minor version. See the [kind release images](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0).
+For validation also install Helm 3 (CI uses `v3.19.0`) and kubeconform
 `v0.8.0`. Helm CLI renders the chart for validation and is used for one-time
 adoption; normal bootstrap uses Terraform's Helm provider without the Helm CLI.
 Docker Compose is required for validation; its CLI validates the database
-configuration without needing a running Docker daemon. Python **3.11 or newer**
-is required for the setup entry point and its validation tests. The optional
+configuration without needing a running Docker daemon. The optional
 `teardown-kind.sh --delete-database` operation needs Python 3 and the sibling
 `gitops` checkout. Internet access is required to
 download providers, images, pinned Helm charts and validation schemas.
@@ -73,6 +56,30 @@ For legacy mounted databases, Docker Desktop must still allow sharing the origin
 laptop storage directory. Existing clusters should follow
 [the repository split instructions](../gitops/docs/local/repository-upgrade.md#split-local-infrastructure-from-app-deployment)
 before adopting the new ownership; creating a second cluster is unnecessary.
+
+## Existing clusters
+
+The defaults are now cluster `deployment` and context `kind-deployment`. An
+existing `argocd-postgres` / `kind-argocd-postgres` installation keeps its name.
+Continue selecting it explicitly from `infra-local`:
+
+```sh
+./scripts/bootstrap-kind.sh argocd-postgres
+./scripts/setup-ingress-kind.sh argocd-postgres
+../gitops/scripts/bootstrap.sh --environment local --context kind-argocd-postgres
+```
+
+Use `kind-argocd-postgres` in Kubernetes commands and pass `argocd-postgres` to
+cluster-specific teardown/legacy backup helpers too. For manual Terraform
+commands, keep `cluster_name = "argocd-postgres"` in ignored
+`terraform/platform/terraform.tfvars`; the bootstrap wrapper instead takes the
+explicit cluster argument. Preserve existing state, credentials, mounts and
+database storage. Each checkout/state remains tied to its original cluster.
+
+The examples below use the new defaults. Substitute the existing name/context
+when working on an older installation. Do not run cluster creation to adopt the
+new name; an actual replacement is a separate [planned rebuild](docs/rebuild.md).
+Use separate checkout/state for a different cluster name.
 
 ## 1. Prepare the database and cluster
 
@@ -89,11 +96,17 @@ cp -n kind/cluster.example.yaml kind/cluster.local.yaml
 ./scripts/create-cluster.sh
 ```
 
-The default cluster is `argocd-postgres`, context `kind-argocd-postgres`. The
+The default cluster is `deployment`, context `kind-deployment`. The
 script refuses to replace an existing cluster. The current example needs no
 database storage mount. Keep existing ignored kind files, `/mnt` mounts, node
 labels and laptop data unchanged for legacy recovery or other apps. Older
 mount-based setups can refer to `kind/cluster-storage.example.yaml`.
+
+The node image pin takes effect only when creating a cluster from that config.
+For an existing ignored kind file, copy only the reviewed `nodes[].image` setting
+when preparing a future rebuild; preserve its ports, mounts and labels. Editing
+the example or local file does not upgrade a running cluster. Cluster replacement
+follows the separate [rebuild procedure](docs/rebuild.md).
 
 To select another name/config, use `./scripts/create-cluster.sh another-cluster
 /absolute/config.yaml` and pass that name to platform scripts. Each platform
@@ -128,7 +141,7 @@ To investigate without applying, use the [manual init/plan commands](docs/terraf
 To open the Argo CD UI, leave this running in another terminal:
 
 ```sh
-kubectl --context kind-argocd-postgres -n argocd \
+kubectl --context kind-deployment -n argocd \
   port-forward service/argocd-server 8080:443
 ```
 
@@ -136,7 +149,7 @@ Open https://localhost:8080 and sign in as `admin`. Retrieve the initial
 password on a fresh installation:
 
 ```sh
-kubectl --context kind-argocd-postgres -n argocd \
+kubectl --context kind-deployment -n argocd \
   get secret argocd-initial-admin-secret \
   -o jsonpath='{.data.password}' | base64 -d
 printf '\n'
@@ -158,7 +171,7 @@ The platform provides this contract:
 
 | Setting | Value |
 | --- | --- |
-| Default context | `kind-argocd-postgres` |
+| Default context | `kind-deployment` |
 | Argo CD namespace | `argocd`, with Application/ApplicationSet CRDs ready |
 | Shared ingress | Namespace `traefik`, IngressClass `traefik` |
 | HTTP mapping | `127.0.0.1:80` → node `30080` → Traefik |
@@ -172,10 +185,10 @@ the deployment manifests, then run:
 
 ```sh
 cd ../gitops
-./scripts/bootstrap.sh --environment local --context kind-argocd-postgres
+./scripts/bootstrap.sh --environment local --context kind-deployment
 ```
 
-That separate bootstrap registers `staging-root`; its ApplicationSet discovers
+That separate bootstrap registers `root`; its ApplicationSet discovers
 `apps/*/overlays/local` from GitHub `main`. App sync is automatic, including schema
 migrations. The separate database, connection Secret and any restored records
 must be ready first. The
@@ -212,7 +225,11 @@ When changing provider pins, [refresh the lock file for both macOS ARM64 and
 Linux AMD64](docs/terraform.md#maintain-provider-checksums) before committing.
 CI and bootstrap use the committed checksums with `-lockfile=readonly`.
 
-After editing `argocd/values.yaml` or `traefik/values.yaml`, review the platform plan:
+Argo CD now matches AWS's chart and default component images. Existing local
+installations need the separately reviewed [version upgrade](docs/terraform.md#shared-versions-and-upgrades);
+configuration validation does not apply that upgrade.
+
+After editing controller values or chart pins, review the platform plan:
 
 ```sh
 umask 077
@@ -254,7 +271,7 @@ State, state backups, plans, legacy generated manifests and real `.tfvars` are i
 state may contain Argo CD credentials and must be kept private. There is no AWS
 provider or remote AWS backend. Back up state privately and never reuse AWS state.
 
-Both methods below remove the entire `argocd-postgres` cluster, including app
+Both methods below remove the entire `deployment` cluster, including app
 deployments, Argo CD, Traefik and all Kubernetes Secrets. **Deleting the cluster
 does not delete the laptop database files.** Choose whether to reuse or remove
 those files before registering apps again.
@@ -278,7 +295,7 @@ Complete the database backup, restore verification and writer shutdown in
 ```
 
 The preview makes no changes. The second command asks you to type
-`delete argocd-postgres`, saves cluster Secrets and both local Terraform states
+`delete deployment`, saves cluster Secrets and both local Terraform states
 privately under `$HOME/.local/share/infra-local/backups/`, pauses Argo CD and
 refuses to proceed while syncs or Jobs are active. It drains all kind nodes
 before deleting the cluster, allowing PostgreSQL's normal shutdown grace period.
@@ -306,7 +323,7 @@ To test a fresh database as well as a fresh cluster:
 ```
 
 The script displays the exact host `pgdata` path discovered from the running
-kind nodes' Docker mounts, then requires `delete argocd-postgres and database`.
+kind nodes' Docker mounts, then requires `delete deployment and database`.
 After successful drain and cluster deletion, it delegates deletion to the
 [app-owned helper](../gitops/apps/myfastapiapp/overlays/local/postgres/delete-data.py).
 Only myfastapiapp's `pgdata` is removed: accounts, sessions, records and database
@@ -329,7 +346,7 @@ wrapper cannot discover the original path and stops; see
 2. Delete the cluster:
 
    ```sh
-   kind delete cluster --name argocd-postgres
+   kind delete cluster --name deployment
    ```
 
 3. Leave the laptop storage directory and `kind/cluster.local.yaml` intact.
@@ -344,7 +361,7 @@ wrapper cannot discover the original path and stops; see
 2. Delete the cluster:
 
    ```sh
-   kind delete cluster --name argocd-postgres
+   kind delete cluster --name deployment
    ```
 
 3. Follow the app-owned [physical database removal instructions](../gitops/apps/myfastapiapp/overlays/local/postgres/reset.md#discard-the-database-after-cluster-teardown).
@@ -378,7 +395,7 @@ available. Images loaded into the old kind cluster must be loaded again. Follow
 [deployment setup](../gitops/docs/local/setup.md), then from `gitops` run:
 
 ```sh
-./scripts/bootstrap.sh --environment local --context kind-argocd-postgres
+./scripts/bootstrap.sh --environment local --context kind-deployment
 ```
 
 Argo CD deploys GitHub `main`, including automatic migrations. Root **Synced**

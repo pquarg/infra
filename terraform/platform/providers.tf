@@ -1,7 +1,7 @@
 variable "cluster_name" {
   description = "Existing kind cluster; the provider always selects kind-<name>. Use separate checkouts/state for different clusters."
   type        = string
-  default     = "argocd-postgres"
+  default     = "deployment"
 
   validation {
     condition     = can(regex("^[a-z0-9][a-z0-9-]*$", var.cluster_name))

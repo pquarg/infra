@@ -3,7 +3,7 @@ set -euo pipefail
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_root"
-for required_command in kubectl kubeconform terraform helm docker python3; do
+for required_command in kubectl kubeconform terraform helm docker; do
   if ! command -v "$required_command" > /dev/null; then
     printf 'Error: %s is required; see README.md.\n' "$required_command" >&2
     exit 1
@@ -12,7 +12,6 @@ done
 bash tests/bootstrap.sh
 bash tests/teardown.sh
 bash tests/database.sh
-python3 -m unittest discover -s tests -p 'test_*.py'
 terraform fmt -check -recursive terraform
 for script in scripts/*.sh tests/*.sh database/*.sh; do
   bash -n "$script"

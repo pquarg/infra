@@ -1,21 +1,11 @@
-# Chart 10.11.0 packages Argo CD v3.5.5, matching the former manifest install.
+# Chart 10.11.6 packages Argo CD v3.5.6, matching infra-aws.
+# Use the pinned chart's Argo CD, Dex and Redis images in both environments.
 # Keep names used by the bootstrap scripts and gitops readiness checks.
 fullnameOverride: argocd
 
 crds:
   install: true
   keep: true
-
-# Preserve the former upstream installation's supporting images too.
-dex:
-  image:
-    repository: ghcr.io/dexidp/dex
-    tag: v2.45.1
-
-redis:
-  image:
-    repository: public.ecr.aws/docker/library/redis
-    tag: 8.2.3-alpine
 
 configs:
   cm:

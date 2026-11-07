@@ -1,5 +1,18 @@
 # Tear down and rebuild the local platform
 
+Examples use cluster `deployment` and context `kind-deployment`. For an older
+`argocd-postgres` installation, follow [existing-cluster selection](../README.md#existing-clusters)
+and substitute its name/context in every command, including teardown and creation.
+Rebuilding the same named cluster can retain its state; a different cluster name
+needs separate checkout/state. A default-name change does not authorize a rebuild.
+
+Both checked-in kind examples now pin Kubernetes `1.36.4` by image digest,
+matching EKS's configured `1.36` minor version. An existing ignored kind file
+keeps its previous settings. When preparing an authorized rebuild, review and
+copy only `nodes[].image` from the matching example; keep the original ports,
+mounts, labels and cluster name. Changing that setting does not upgrade a
+running cluster. See the [kind release images](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0).
+
 ## Rebuild with the external Compose database
 
 The current deployment database runs outside kind. It stays running, and its
@@ -39,7 +52,7 @@ Choose [method 1 to keep the database](#method-1-keep-the-database) or
 the entire kind cluster and all Kubernetes objects and Secrets. Only method 2
 also removes the selected app's laptop database files. Run commands from
 `infra-local` unless a step explicitly changes directory. These examples use
-cluster `argocd-postgres` and context `kind-argocd-postgres`.
+cluster `deployment` and context `kind-deployment`.
 
 Creating or preparing these repositories does not alter a running cluster.
 Only follow this procedure when deliberately replacing the local platform.
@@ -58,9 +71,9 @@ Terraform state with this bootstrap.
 2. Stop each app's database writers. For `myfastapiapp`:
 
    ```sh
-   kubectl --context kind-argocd-postgres -n myfastapiapp scale \
+   kubectl --context kind-deployment -n myfastapiapp scale \
      deployment/myfastapiapp-deployment --replicas=0
-   kubectl --context kind-argocd-postgres -n myfastapiapp wait \
+   kubectl --context kind-deployment -n myfastapiapp wait \
      --for=delete pod -l app=myfastapiapp-pod --timeout=120s
    ```
 
@@ -73,7 +86,8 @@ Terraform state with this bootstrap.
    ```
 
    This saves a private archive outside Git and checks archive readability; it
-   does not test a restore. See the [app backup runbook](../../gitops/apps/myfastapiapp/overlays/local/README.md#back-up-and-release-a-database-change).
+   does not test a restore. See the [legacy database cutover runbook](../../gitops/docs/local/database-migration.md#1-pause-and-back-up)
+   for backup and restore verification.
    Record the original database credentials, PostgreSQL major version and
    absolute host data directory outside Git. Retained data needs the original
    credentials; Kubernetes Secrets disappear with the cluster. Preserve filled
@@ -82,9 +96,9 @@ Terraform state with this bootstrap.
    For `myfastapiapp`:
 
    ```sh
-   kubectl --context kind-argocd-postgres -n myfastapiapp scale \
+   kubectl --context kind-deployment -n myfastapiapp scale \
      statefulset/myfastapiapp-postgres-statefulset --replicas=0
-   kubectl --context kind-argocd-postgres -n myfastapiapp wait \
+   kubectl --context kind-deployment -n myfastapiapp wait \
      --for=delete pod -l app=myfastapiapp-postgres-pod --timeout=180s
    ```
 
@@ -96,7 +110,9 @@ failure. Cluster deletion removes namespaces, Secrets and PV/PVC objects.
 
 Review `kind/cluster.local.yaml` before removal. It must use the preserved
 absolute storage parent, `/mnt`, the storage node label and
-`127.0.0.1:80` → `30080` port mapping from `kind/cluster.example.yaml`.
+`127.0.0.1:80` → `30080` port mapping from
+`kind/cluster-storage.example.yaml`. The fresh-cluster example has no database
+mount or storage label.
 Free port 80, including any obsolete ingress gateway container.
 Privately back up both `terraform/argocd/terraform.tfstate` and
 `terraform/platform/terraform.tfstate` and their backups if present. These files
@@ -113,7 +129,7 @@ After completing preparation, use the helper to preview and perform teardown:
 ./scripts/teardown-kind.sh
 ```
 
-Type `delete argocd-postgres` at the prompt. The script saves cluster Secrets,
+Type `delete deployment` at the prompt. The script saves cluster Secrets,
 Argo CD Application definitions/policies (when installed), and both local
 Terraform states privately under `$HOME/.local/share/infra-local/backups/` before
 changing cluster resources. It stops the ApplicationSet controller, disables
@@ -132,7 +148,7 @@ kubeconfig file. A mismatched node inventory stops teardown before changes.
 Alternatively, after the same preparation, manually delete the cluster:
 
 ```sh
-kind delete cluster --name argocd-postgres
+kind delete cluster --name deployment
 ```
 
 Preserve the laptop storage parent and all app data, including `pgdata` and its
@@ -156,7 +172,7 @@ This optional argument requires Python 3 and the sibling `gitops` checkout.
 It discovers one unambiguous host data path from the live kind nodes' `/mnt`
 mount (or `/mnt/myfastapiapp-postgres` app mount), validates it with the
 [app-owned deletion helper](../../gitops/apps/myfastapiapp/overlays/local/postgres/delete-data.py),
-and shows it before requiring `delete argocd-postgres and database`. It does
+and shows it before requiring `delete deployment and database`. It does
 not use the potentially edited kind YAML to select a deletion path. App/data
 directories must not be symlinks; nonempty data must contain a valid
 `PG_VERSION`. Other running containers must not mount this storage.
@@ -170,7 +186,7 @@ backup. This argument does not discard additional apps' databases.
 Alternatively, delete just the cluster with `./scripts/teardown-kind.sh`, or manually:
 
 ```sh
-kind delete cluster --name argocd-postgres
+kind delete cluster --name deployment
 ```
 
 Cluster deletion alone leaves all laptop database files intact. If you did
@@ -194,8 +210,8 @@ disabled and the ApplicationSet controller scaled to zero. Keep external
 writers stopped until you either finish teardown or deliberately resume service.
 
 To abandon teardown, inspect nodes and Pods using context
-`kind-argocd-postgres`. Uncordon each affected node explicitly with
-`kubectl --context kind-argocd-postgres uncordon <node>`, restore the ApplicationSet
+`kind-deployment`. Uncordon each affected node explicitly with
+`kubectl --context kind-deployment uncordon <node>`, restore the ApplicationSet
 controller's prior replica count, and restore Application auto-sync policies
 from the private `applications.yaml` snapshot. Repeated attempts take new
 snapshots; use the one from before the first pause. Restore only the reviewed
@@ -215,7 +231,7 @@ resolved. The wrapper cannot rediscover mounts after cluster removal. Inspect
 
 ```sh
 python3 ../gitops/apps/myfastapiapp/overlays/local/postgres/delete-data.py \
-  --cluster argocd-postgres \
+  --cluster deployment \
   --data-directory '/absolute/storage/parent/myfastapiapp-postgres/pgdata' --dry-run
 ```
 
@@ -245,9 +261,19 @@ rather than treating it as a new installation.
 
 Reconnect the deployment Git credential in Argo CD using the
 [UI/sign-in instructions](../README.md#2-install-argo-cd-and-shared-ingress).
-Before registering `gitops`:
+The current local overlay cannot recreate a legacy Kubernetes database: it
+excludes PostgreSQL and storage. Choose either the
+[external database cutover](../../gitops/docs/local/database-migration.md) using a
+verified archive, or a reviewed legacy GitOps revision that includes `./postgres`
+and compatible app connection settings. If recovering the legacy layout, keep
+that revision selected while following the remaining steps; do not bootstrap
+current `main` expecting it to start PostgreSQL. The current credential guide
+creates a Compose connection Secret, so use the privately preserved legacy
+Secret examples/values for a legacy recovery instead.
 
-1. [Recreate the app namespace and database Secrets](../../gitops/apps/myfastapiapp/overlays/local/README.md#provision-credentials).
+Before registering the chosen legacy revision:
+
+1. Recreate the app namespace and the original app/PostgreSQL Secrets privately.
    For method 1, reuse the original passwords and keep the PostgreSQL major
    version compatible with the retained files. For method 2, you may use new
    matching credentials in both app/database Secrets.
@@ -258,15 +284,17 @@ Before registering `gitops`:
    selected app directory is empty for method 2. Any changed app manifests must
    be validated and published: Argo CD reads GitHub `main`, not local files.
 
-Register app discovery:
+Review the root, ApplicationSet generator/template and app source revisions
+before registering discovery: they must consistently select the reviewed legacy
+manifests while app auto-sync remains paused. The current bootstrap always reads
+published `main`; use it only after preparing that intended source and reviewing
+its diff. Otherwise register the reviewed legacy configuration explicitly with
+context `kind-deployment`. Do not edit or publish recovery source selections
+without checking what other installations read from the same Git branch.
 
-```sh
-cd ../gitops
-./scripts/bootstrap.sh --environment local --context kind-argocd-postgres
-```
-
-This starts automatic sync and migrations. Root **Synced** only confirms
-registration. Wait for each app's **Synced / Healthy** status and follow its
+After registration, resume the selected app's full sync deliberately. This starts
+PostgreSQL, migrations and API rollout in the legacy layout. Root **Synced**
+only confirms registration. Wait for each app's **Synced / Healthy** status and follow its
 [verification procedure](../../gitops/apps/myfastapiapp/overlays/local/README.md#verify-the-deployment).
 For method 1, verify existing data and login; for method 2, register a new account
 and verify login. Resume traffic only after these checks pass.

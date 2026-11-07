@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   printf 'Usage: %s [cluster] [config]\n' "${0##*/}"
-  printf 'Defaults: cluster=argocd-postgres; config=kind/cluster.local.yaml in this repository.\n'
+  printf 'Defaults: cluster=deployment; config=kind/cluster.local.yaml in this repository.\n'
   printf 'Creates a new cluster only; existing clusters are never replaced.\n'
 }
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -15,7 +15,7 @@ if (( $# > 2 )); then
   exit 1
 fi
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-cluster="${1:-argocd-postgres}"
+cluster="${1:-deployment}"
 config="${2:-$project_root/kind/cluster.local.yaml}"
 for required_command in docker kind kubectl; do
   if ! command -v "$required_command" > /dev/null; then
