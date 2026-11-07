@@ -92,6 +92,19 @@ CloudFront function tests and teardown regressions. It downloads pinned modules/
 providers and needs internet, but no AWS credentials or live cluster. CI runs the
 same checks. Passing checks do not prove deployment success.
 
+Provider lock files must include package checksums for both Apple Silicon Macs
+(`darwin_arm64`) and the GitHub Actions runner (`linux_amd64`). After a reviewed
+provider update, run this in each affected, initialized stage (foundation shown):
+
+```sh
+terraform -chdir=terraform/foundation providers lock \
+  -platform=darwin_arm64 -platform=linux_amd64
+```
+
+Commit the updated `.terraform.lock.hcl` files. CI deliberately initializes with
+`-lockfile=readonly`, so it cannot add a missing platform's checksum. See
+[Terraform's provider lock command](https://developer.hashicorp.com/terraform/cli/commands/providers/lock).
+
 For live acceptance check controller/app health, database data/authentication,
 ALB target health, HTTPS, allowed/denied addresses and actual log receipt; finish
 with ordinary plans showing no unexpected changes. Changes to cluster/storage,
