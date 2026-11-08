@@ -1,0 +1,26 @@
+// CloudFront supplies viewer.ip from the connection. Never trust forwarded headers.
+// Terraform renders only the IPv4 /32 addresses validated by eks_admin_cidrs.
+var allowedIps = ${allowed_ips};
+
+function handler(event) {
+    if (event.viewer && allowedIps.indexOf(event.viewer.ip) !== -1) {
+        return event.request;
+    }
+
+    // Fail closed for missing/unknown addresses, including IPv6. Do not log IPs,
+    // authorization headers or request bodies.
+    return {
+        statusCode: 403,
+        statusDescription: 'Forbidden',
+        headers: {
+            'cache-control': { value: 'no-store' },
+            'content-type': { value: 'text/plain; charset=utf-8' },
+            'x-content-type-options': { value: 'nosniff' },
+            'x-frame-options': { value: 'DENY' },
+            'content-security-policy': { value: "default-src 'none'; frame-ancestors 'none'" },
+            'strict-transport-security': { value: 'max-age=31536000' },
+            'referrer-policy': { value: 'no-referrer' }
+        },
+        body: 'Forbidden'
+    };
+}

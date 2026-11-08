@@ -1,0 +1,17 @@
+fullnameOverride: aws-load-balancer-controller
+replicaCount: 2
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+ingressClass: alb
+ingressClassConfig:
+  default: false
+enableShield: false
+enableWaf: false
+enableWafv2: false
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
