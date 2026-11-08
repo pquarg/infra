@@ -1,0 +1,50 @@
+name: Validate local infrastructure
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      KUBECTL_VERSION: v1.36.1
+      KUBECONFORM_VERSION: v0.8.0
+      KUBERNETES_VERSION: "1.36.0"
+      HELM_VERSION: v3.19.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install pinned Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.17.1"
+
+      - name: Install pinned validation tools
+        run: |
+          tool_dir="$(mktemp -d)"
+          cd "$tool_dir"
+          curl -fsSLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
+          curl -fsSLO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl.sha256"
+          printf '%s  kubectl\n' "$(cat kubectl.sha256)" | sha256sum --check
+          curl -fsSLO "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          curl -fsSLO "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/CHECKSUMS"
+          sha256sum --check --ignore-missing CHECKSUMS
+          tar -xzf kubeconform-linux-amd64.tar.gz kubeconform
+          curl -fsSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl -fsSLO "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          sha256sum --check "helm-${HELM_VERSION}-linux-amd64.tar.gz.sha256sum"
+          tar -xzf "helm-${HELM_VERSION}-linux-amd64.tar.gz" linux-amd64/helm
+          mv linux-amd64/helm ./helm
+          chmod +x kubectl kubeconform helm
+          echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Validate Terraform, bootstrap, Argo CD chart and shared platform
+        run: ./scripts/validate.sh

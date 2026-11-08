@@ -1,0 +1,19 @@
+# Chart 10.11.6 packages Argo CD v3.5.6, matching infra-aws.
+# Use the pinned chart's Argo CD, Dex and Redis images in both environments.
+# Keep names used by the bootstrap scripts and gitops readiness checks.
+fullnameOverride: argocd
+
+crds:
+  install: true
+  keep: true
+
+configs:
+  cm:
+    # Preserve the upstream manifest installation's default tracking label.
+    application.instanceLabelKey: app.kubernetes.io/instance
+
+server:
+  service:
+    type: ClusterIP
+  ingress:
+    enabled: false
