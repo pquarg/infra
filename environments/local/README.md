@@ -115,7 +115,7 @@ printf '\n'
 Use the replacement password if it was changed. Under **Settings → Repositories**,
 connect `git@github.com:pquarg/gitops.git` with a read-only Git credential usable
 by the `default` project. Keep the credential outside Git. If using another
-remote, update all `repoURL` values in `gitops/root/staging.yaml` and
+remote, update all `repoURL` values in `gitops/bootstrap/local.yaml` and
 `gitops/argocd/local/apps.yaml`. Git authentication and app image-pull
 credentials are separate.
 
@@ -144,12 +144,12 @@ Complete its app preparation before running the GitOps bootstrap. For
 - The connection uses `host.docker.internal:5433`, and the Pod database probe
   reports `Database connectivity, app privileges and transactional DDL passed.`
 
-The [GitOps setup guide](../../../gitops/docs/local/setup.md#4-validate-publish-and-register-staging)
+The [GitOps setup guide](../../../gitops/docs/local/setup.md#4-validate-publish-and-register-apps)
 contains the validation, publication and registration commands to run next.
 
-The `root` Application discovers `apps/*/overlays/local` through its
+The `bootstrap` Application discovers `apps/*/overlays/local` through its
 ApplicationSet. App sync is automatic, including schema migrations, so the
-database and credentials must be ready first. Root **Synced** confirms
+database and credentials must be ready first. Bootstrap **Synced** confirms
 registration; check each app's **Synced / Healthy** status and verification
 procedure before claiming deployment success.
 If sync fails, use the app's [first-sync troubleshooting](../../../gitops/apps/myfastapiapp/overlays/local/README.md#troubleshoot-the-first-sync).
