@@ -6,13 +6,13 @@ stage="${1:-}"
 case "$stage" in foundation|platform|edge) shift ;; *) printf 'Usage: %s foundation|platform|edge [--context CONTEXT] [--kubeconfig PATH]\n' "${0##*/}" >&2; exit 1 ;; esac
 "$root/scripts/check-stage.sh" "$stage" "$@"
 umask 077
-stage_root="$root/terraform/$stage"
+stage_root="$root/$stage"
 terraform -chdir="$stage_root" init -input=false -lockfile=readonly
 # Check stage ownership before producing a plan.
 if [[ "$stage" != foundation ]]; then
-  terraform -chdir="$root/terraform/foundation" init -input=false -lockfile=readonly
+  terraform -chdir="$root/foundation" init -input=false -lockfile=readonly
 fi
-bindings="$(terraform -chdir="$root/terraform/foundation" state list)"
+bindings="$(terraform -chdir="$root/foundation" state list)"
 if grep -Eq '^(helm_release\.|aws_cloudfront_|aws_cloudwatch_log_delivery|aws_s3_bucket[^.]*\.cloudfront_logs)' <<< "$bindings"; then
   printf 'Error: platform/edge bindings are in foundation state. Inspect state ownership before any apply; see docs/architecture.md#stage-interfaces-and-state.\n' >&2
   exit 1

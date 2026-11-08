@@ -14,6 +14,9 @@ while (( $# )); do
     *) printf 'Error: unknown argument %s\n' "$1" >&2; exit 1 ;;
   esac
 done
+if [[ "$stage" != foundation && ( -z "$context" || "$context" == kind-* || "$kubeconfig" != /* || "$kubeconfig" == *:* ) ]]; then
+  printf 'Error: select --context CONTEXT and one absolute kubeconfig file.\n' >&2; exit 1
+fi
 aws_args=(--profile aws-project --region eu-north-1 --no-cli-pager)
 account="$(aws "${aws_args[@]}" sts get-caller-identity --query Account --output text)"
 [[ "$account" == 245361883993 ]] || { printf 'Error: unexpected AWS account.\n' >&2; exit 1; }

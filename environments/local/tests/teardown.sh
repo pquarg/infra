@@ -4,9 +4,9 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
-mkdir -p "$tmp/bin" "$tmp/workspace/infra-local/scripts" "$tmp/workspace/infra-local/terraform/platform"
-cp "$root/scripts/teardown-kind.sh" "$tmp/workspace/infra-local/scripts/"
-printf 'retained state\n' > "$tmp/workspace/infra-local/terraform/platform/terraform.tfstate"
+mkdir -p "$tmp/bin" "$tmp/workspace/infra/environments/local/scripts" "$tmp/workspace/infra/environments/local/platform"
+cp "$root/scripts/teardown-kind.sh" "$tmp/workspace/infra/environments/local/scripts/"
+printf 'retained state\n' > "$tmp/workspace/infra/environments/local/platform/terraform.tfstate"
 cat > "$tmp/bin/fake" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -64,7 +64,7 @@ run() {
   printf '%s\n' "$input" | PATH="$tmp/bin:$PATH" CASE="$scenario" LOG="$tmp/log" \
     REMOVED="$tmp/removed" HOME="$tmp/private-home/$scenario" \
     INFRA_LOCAL_KUBECONFIG='/tmp/explicit kubeconfig' KUBECONFIG=/ambient \
-    bash "$tmp/workspace/infra-local/scripts/teardown-kind.sh" "$@" > "$tmp/out" 2>&1 || result=$?
+    bash "$tmp/workspace/infra/environments/local/scripts/teardown-kind.sh" "$@" > "$tmp/out" 2>&1 || result=$?
 }
 assert_no_delete() {
   if grep -q '^kind <delete>' "$tmp/log"; then fail 'must not delete cluster'; fi
@@ -111,7 +111,7 @@ for scenario in fresh installed; do
       kind*'<delete>'*) [[ "$command" == 'kind <delete> <cluster> <--name> <example>' ]] || fail 'only selected kind cluster' ;;
     esac
   done < "$tmp/log"
-  [[ "$(cat "$tmp/workspace/infra-local/terraform/platform/terraform.tfstate")" == 'retained state' ]] || fail 'original state retained'
+  [[ "$(cat "$tmp/workspace/infra/environments/local/platform/terraform.tfstate")" == 'retained state' ]] || fail 'original state retained'
   copies="$(find "$tmp/private-home/$scenario" -name terraform.tfstate -perm 0600)"
   [[ -n "$copies" ]] || fail 'private state copy'
   [[ -n "$(find "$tmp/private-home/$scenario" -name secrets.yaml -perm 0600)" ]] || fail 'private Secrets copy'

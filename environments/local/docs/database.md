@@ -1,6 +1,6 @@
 # Local PostgreSQL outside kind
 
-Run from `infra-local`. Docker Compose owns this PostgreSQL instance, separately
+Run from `infra/environments/local`. Docker Compose owns this PostgreSQL instance, separately
 from kind and Terraform. Argo CD deploys only the app and its migration Job.
 This mirrors the AWS boundary: provision a database, then deploy against its
 endpoint. The app repository's Compose database on port 5432 remains an
@@ -70,7 +70,7 @@ use `host.docker.internal:5433`. This uses Docker Desktop's
 [documented host connection](https://docs.docker.com/desktop/features/networking/networking-how-tos/).
 No database port is deliberately bound to the laptop's LAN interfaces. Verify the
 actual path from a kind Pod before deploying; Docker Desktop, VPN and firewall
-settings can affect it. Use the [app setup](../../gitops/apps/myfastapiapp/overlays/local/README.md#provision-credentials)
+settings can affect it. Use the [app setup](../../../../gitops/apps/myfastapiapp/overlays/local/README.md#provision-credentials)
 to provision its connection Secret and run the Kubernetes connectivity probe.
 That probe must pass before registering the app with Argo CD. A healthy
 Compose container checks PostgreSQL locally; the probe checks the actual
@@ -78,6 +78,16 @@ connection from inside kind.
 
 Local connections use `sslmode=disable`; AWS keeps `verify-full` and its RDS CA
 mounts. Local does not emulate RDS TLS or managed backups.
+
+## Checkout consolidation
+
+The Compose project, external volume and external password paths remain the same.
+A running container may still bind the original checkout's `database/init-app.sh`.
+Keep that checkout available: moving configuration does not require restarting or
+recreating PostgreSQL. The helper in the new checkout addresses the same project;
+a future explicitly chosen `up` may recreate its container to use the new bind path,
+while retaining the external volume and passwords. Do not restart it just to
+finish consolidation. See [the handoff](../../../docs/consolidation.md).
 
 ## Lifecycle and credentials
 

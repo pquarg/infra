@@ -1,7 +1,7 @@
 name: deployment-project-local-db
 services:
   postgres:
-    # Match the PostgreSQL version selected by infra-aws, reviewed separately.
+    # Match the PostgreSQL version selected by environments/aws/dev, reviewed separately.
     image: postgres:17.11-bookworm
     restart: unless-stopped
     stop_grace_period: 60s

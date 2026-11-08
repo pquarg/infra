@@ -11,7 +11,7 @@ resource "aws_cloudfront_function" "https_redirects" {
   runtime = "cloudfront-js-2.0"
   comment = "Preserve HTTPS in same-host redirects from the private HTTP origin"
   publish = true
-  code    = file("${path.module}/../../functions/https-redirects.js")
+  code    = file("${path.module}/../functions/https-redirects.js")
 }
 
 # Use the same exact IPv4 addresses as the Kubernetes administrator allowlist.
@@ -21,7 +21,7 @@ resource "aws_cloudfront_function" "ip_allowlist" {
   runtime = "cloudfront-js-2.0"
   comment = "Restrict the learning app to the configured administrator IPv4 addresses"
   publish = true
-  code = templatefile("${path.module}/../../functions/ip-allowlist.js.tftpl", {
+  code = templatefile("${path.module}/../functions/ip-allowlist.js.tftpl", {
     allowed_ips = jsonencode([for cidr in var.eks_admin_cidrs : trimsuffix(cidr, "/32")])
   })
 }

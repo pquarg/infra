@@ -1,6 +1,2 @@
-fullnameOverride: argocd
-server:
-  service:
-    type: ClusterIP
-  ingress:
-    enabled: false
+# AWS-only overrides. Common settings are in shared/argocd/values.yaml.
+{}

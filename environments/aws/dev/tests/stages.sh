@@ -4,7 +4,7 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
-mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/repo/config" "$tmp/repo/terraform/foundation" "$tmp/repo/terraform/platform" "$tmp/repo/terraform/edge"
+mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/repo/config" "$tmp/repo/foundation" "$tmp/repo/platform" "$tmp/repo/edge"
 cp "$root/scripts/check-stage.sh" "$root/scripts/plan.sh" "$tmp/repo/scripts/"
 touch "$tmp/repo/config/operator.tfvars"
 cat > "$tmp/bin/fake" <<'FAKE'
@@ -41,7 +41,7 @@ run() {
 for stage in foundation platform edge; do
   run success "$stage"
   [[ "$result" == 0 ]] || fail "$stage plan"
-  grep -q "terraform/$stage> <plan>" "$tmp/log" || fail 'owning stage'
+  grep -q "$stage> <plan>" "$tmp/log" || fail 'owning stage'
   if grep -q '<apply>\|target=' "$tmp/log"; then fail 'only full plan permitted'; fi
   if [[ "$stage" != platform ]]; then grep -q 'operator.tfvars>' "$tmp/log" || fail 'shared allowlist'; fi
   if [[ "$stage" == foundation ]] && grep -q describe-load-balancers "$tmp/log"; then fail 'foundation must not require ALB'; fi

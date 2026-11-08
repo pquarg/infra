@@ -12,7 +12,7 @@ done
 bash tests/bootstrap.sh
 bash tests/teardown.sh
 bash tests/database.sh
-terraform fmt -check -recursive terraform
+terraform fmt -check -recursive platform
 for script in scripts/*.sh tests/*.sh database/*.sh; do
   bash -n "$script"
 done
@@ -24,13 +24,15 @@ trap 'exit 143' TERM
 LOCAL_DB_SECRETS_DIR="$render_dir/secrets" LOCAL_DB_PORT=5433 \
   docker compose --env-file database/.env.example -f database/compose.yaml config --quiet
 # Validate clean copies so working state/providers and local .tfvars are untouched.
-mkdir -p "$render_dir/argocd" "$render_dir/traefik"
-cp argocd/chart-version.txt argocd/values.yaml "$render_dir/argocd/"
-cp traefik/chart-version.txt traefik/values.yaml "$render_dir/traefik/"
+validation_root="$render_dir/environments/local"
+mkdir -p "$validation_root/argocd" "$validation_root/traefik" "$render_dir/shared/argocd"
+cp "$project_root/../../shared/argocd/values.yaml" "$render_dir/shared/argocd/"
+cp argocd/chart-version.txt argocd/values.yaml "$validation_root/argocd/"
+cp traefik/chart-version.txt traefik/values.yaml "$validation_root/traefik/"
 for stage in platform; do
-  stage_root="$render_dir/terraform/$stage"
+  stage_root="$validation_root/$stage"
   mkdir -p "$stage_root"
-  cp terraform/"$stage"/*.tf terraform/"$stage"/.terraform.lock.hcl "$stage_root/"
+  cp "$stage"/*.tf "$stage"/.terraform.lock.hcl "$stage_root/"
   terraform -chdir="$stage_root" init -backend=false -input=false -lockfile=readonly
   terraform -chdir="$stage_root" validate
 done
@@ -38,7 +40,7 @@ helm template argocd argo-cd \
   --repo https://argoproj.github.io/argo-helm \
   --version "$(cat argocd/chart-version.txt)" \
   --namespace argocd --kube-version "${KUBERNETES_VERSION:-1.36.0}" \
-  --values argocd/values.yaml --include-crds > "$render_dir/argocd-install.yaml"
+  --values "$project_root/../../shared/argocd/values.yaml" --values argocd/values.yaml --include-crds > "$render_dir/argocd-install.yaml"
 helm pull traefik --repo https://traefik.github.io/charts \
   --version "$(cat traefik/chart-version.txt)" --destination "$render_dir"
 helm template traefik "$render_dir/traefik-$(cat traefik/chart-version.txt).tgz" \

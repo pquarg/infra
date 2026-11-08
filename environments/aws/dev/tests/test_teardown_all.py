@@ -321,8 +321,8 @@ class ConfigTests(unittest.TestCase):
     def test_original_source_is_unchanged_and_private_copy_has_deletion_flags(self):
         with tempfile.TemporaryDirectory() as directory:
             copy = Path(directory)
-            original = (teardown.ROOT / "terraform/foundation/database.tf").read_text()
-            teardown.copy_config(teardown.ROOT / "terraform/foundation", copy)
+            original = (teardown.ROOT / "foundation/database.tf").read_text()
+            teardown.copy_config(teardown.ROOT / "foundation", copy)
             for setting, before, after in (
                 ("prevent_destroy", "true", "false"), ("deletion_protection", "true", "false"),
                 ("skip_final_snapshot", "false", "true"), ("delete_automated_backups", "false", "true"),
@@ -330,7 +330,7 @@ class ConfigTests(unittest.TestCase):
                 teardown.replace_setting(copy / "database.tf", setting, before, after)
                 # Retry is idempotent.
                 teardown.replace_setting(copy / "database.tf", setting, before, after)
-            self.assertEqual((teardown.ROOT / "terraform/foundation/database.tf").read_text(), original)
+            self.assertEqual((teardown.ROOT / "foundation/database.tf").read_text(), original)
             self.assertNotIn("prevent_destroy = true", (copy / "database.tf").read_text())
             self.assertFalse((copy / ".terraform").exists())
 
@@ -398,13 +398,34 @@ class StageTests(unittest.TestCase):
                     Path(destination).write_text('eks_admin_cidrs = ["192.0.2.1/32"]')
                 else:
                     original_copy(source, destination)
+            original_is_file = Path.is_file
+            def is_file(path):
+                return True if path.name == "operator.tfvars" else original_is_file(path)
             # No real operator configuration is required or copied by the test.
-            with patch.object(teardown.shutil, "copy2", side_effect=copy), patch.object(teardown.shutil, "copytree"), patch.object(job, "init_tf"), \
-                    patch.object(teardown.Path, "is_file", return_value=True):
+            with patch.object(teardown.shutil, "copy2", side_effect=copy), patch.object(job, "init_tf"), \
+                    patch.object(teardown.Path, "is_file", is_file):
                 job.initialize()
             for stage, path in job.stages.items():
                 self.assertIn(teardown.STATE_KEYS[stage], (path / "backend.tf").read_text())
                 self.assertTrue((path / ".terraform.lock.hcl").exists())
+            for relative in ("../argocd/values.yaml", "../../../../shared/argocd/values.yaml",
+                             "../load-balancer-controller/values.yaml"):
+                self.assertTrue((job.platform / relative).is_file())
+            self.assertTrue((job.edge / "../functions/https-redirects.js").is_file())
+            self.assertTrue((job.foundation / "../policies/aws-load-balancer-controller-v3.6.2.json").is_file())
+            self.assertTrue((job.bootstrap / ".terraform.lock.hcl").is_file())
+            self.assertTrue((job.directory / "environments/aws/dev/config/operator.tfvars").is_file())
+
+    def test_pre_consolidation_records_require_original_tool(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary)
+            (path / "progress.json").write_text(json.dumps({
+                "version": 2, "project": teardown.PROJECT, "state_keys": teardown.STATE_KEYS,
+                "delete_backend": False, "completed": [],
+            }))
+            with self.assertRaisesRegex(teardown.Failure, "original checkout/tool"):
+                teardown.Teardown(path)
+
 
 
 class CommandTests(unittest.TestCase):

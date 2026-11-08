@@ -4,8 +4,8 @@ set -euo pipefail
 root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
-mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/repo/terraform/platform"
-cp "$root/scripts/bootstrap-kind.sh" "$root/scripts/setup-ingress-kind.sh" "$tmp/repo/scripts/"
+mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/repo/platform"
+cp "$root/scripts/bootstrap-kind.sh" "$root/scripts/setup-ingress-kind.sh" "$root/scripts/check-platform.sh" "$tmp/repo/scripts/"
 cat > "$tmp/bin/fake" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -25,6 +25,7 @@ case "${0##*/}" in
       esac
     elif [[ "$*" == *' apply '* && "$CASE" == apply ]]; then exit 42; fi ;;
   kubectl)
+    if [[ "$*" == *'get nodes'* ]]; then echo example-control-plane; fi
     case "$CASE:$*" in
       untracked-argocd:*'get deployment argocd-server '*|untracked-traefik:*'get deployment traefik '*) echo existing ;;
       record:*'get secrets '*) echo secret/release ;;
@@ -38,9 +39,9 @@ chmod +x "$tmp/bin/fake"
 for tool in terraform kubectl kind docker; do ln -s fake "$tmp/bin/$tool"; done
 fail() { cat "$tmp/out" >&2; printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 run() {
-  rm -f "$tmp/repo/terraform/platform/terraform.tfstate"
+  rm -f "$tmp/repo/platform/terraform.tfstate"
   case "$1" in
-    unexpected|context|tracked) touch "$tmp/repo/terraform/platform/terraform.tfstate" ;;
+    unexpected|context|tracked) touch "$tmp/repo/platform/terraform.tfstate" ;;
   esac
   : > "$tmp/log"
   result=0

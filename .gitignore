@@ -1,9 +1,11 @@
+# Private operator configuration and generated artifacts.
 .DS_Store
 .env
 .env.*
 !.env.example
 *.log
-/kind/**/*.local.yaml
+crash.*.log
+/environments/local/kind/**/*.local.yaml
 **/*-secrets.yaml
 **/secrets.yaml
 .terraform/
@@ -13,6 +15,7 @@
 *.tfvars
 *.tfvars.json
 .terraform.tfstate.lock.info
-# Keep generated artifacts out of version control.
-/.generated/
+.generated/
+.teardown/
+.handoff/
 __pycache__/

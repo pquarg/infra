@@ -1,7 +1,7 @@
 resource "aws_iam_policy" "load_balancer_controller" {
   name        = "deployment-project-dev-load-balancer-controller"
   description = "Official AWS Load Balancer Controller v3.6.2 permissions"
-  policy      = file("${path.module}/../../policies/aws-load-balancer-controller-v3.6.2.json")
+  policy      = file("${path.module}/../policies/aws-load-balancer-controller-v3.6.2.json")
 }
 
 resource "aws_iam_role" "load_balancer_controller" {

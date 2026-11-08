@@ -4,7 +4,7 @@ Destructive work requires a separately chosen scope. No teardown is a validation
 check. The staged command intentionally deletes runtime resources, **all this
 lab database's snapshots/backups**, and CloudFront access logs. It retains the
 state backend by default. For data/log retention use the
-[manual deployment runbook](../../gitops/docs/aws/teardown.md) instead.
+[manual deployment runbook](../../../../../gitops/docs/aws/teardown.md) instead.
 
 ```sh
 # Read-only preflight/inventory; writes private local artifacts only.
@@ -24,7 +24,7 @@ progress records are rejected before deletion.
 ## Stage order and private artifacts
 
 The command uses mode-700 `.teardown/<run>/` with private copies at
-`terraform/foundation`, `terraform/platform`, `terraform/edge` and bootstrap.
+`environments/aws/dev/{foundation,platform,edge}`, shared values and bootstrap.
 Relative values/function/policy paths and provider locks remain intact. It reads
 all three intended backend keys independently, snapshots states/outputs into
 private files and records S3 VersionIds. Missing stage keys are absent stages;
@@ -56,9 +56,17 @@ Unexpected references/finalizers or AWS constraints stop the run for inspection;
 they are not bypassed by broad deletion. S3 locks protect operations, and a local
 command lock prevents two invocations in this checkout. Freeze other applies.
 
+## Pre-consolidation records
+
+Existing `.teardown` records stay in the original `infra-aws` checkout. Use the
+original checkout and the tool revision that created that run to resume it.
+The consolidated tool rejects older record versions because private paths have
+changed. Never rewrite old snapshots or copy them into the new record layout.
+The preserved source history contains the earlier tool revisions.
+
 ## Failure and resume
 
-Progress records require version `2`, the expected state keys and the original
+Progress records require version `3`, the expected state keys and the original
 backend scope. Records that fail these checks are rejected before commands run.
 
 Fix the blocker and use the printed resume command with the original scope:
@@ -79,19 +87,19 @@ restore remote state or a deleted database.
 ## Rebuild after deleting the backend
 
 If the backend survived, initialize each root against its existing key and follow
-[the deployment walkthrough](../../gitops/docs/aws/deploy-from-scratch.md). Do not
+[the deployment walkthrough](../../../../../gitops/docs/aws/deploy-from-scratch.md). Do not
 use consumed plans or invent fresh local state over an existing bucket/state.
 If the backend was explicitly removed, create a new private local bootstrap copy:
 
 1. Verify the expected bucket is absent in the selected account, and inspect
    private removal records. An access error does not mean it is absent.
-2. Copy `bootstrap/*.tf` and its provider lock to a private directory outside Git,
+2. Copy `../../../bootstrap/aws/*.tf` and its provider lock to a private directory outside Git,
    excluding `backend.tf`, old `.terraform` and old state. Keep checked-in safe
    defaults (`prevent_destroy=true`, `force_destroy=false`).
 3. In that directory run `terraform init -lockfile=readonly`, review `terraform
    plan -out=bootstrap.tfplan`, then apply the reviewed plan. This creates only
    the protected bucket and its settings.
-4. Add the checked-in `bootstrap/backend.tf` to that private copy and run
+4. Add the checked-in `../../../bootstrap/aws/backend.tf` to that private copy and run
    `terraform init -migrate-state`. Review the migration prompt, verify the
    `bootstrap/terraform.tfstate` key, then initialize the normal bootstrap/root
    stage directories. Keep the private local backup.

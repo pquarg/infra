@@ -12,12 +12,12 @@ Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → p
 
 | Owner | Configuration and effect |
 | --- | --- |
-| Backend bootstrap | [`bootstrap/`](../bootstrap/) owns only the protected S3 state bucket |
-| Foundation | [`terraform/foundation/`](../terraform/foundation/) owns VPC/subnets/NAT, EKS/workers/add-ons, RDS, controller IAM/policy/Pod Identity and frontend SG/rules |
-| Platform | [`terraform/platform/`](../terraform/platform/) owns real Helm releases `argocd` and `aws-load-balancer-controller` |
+| Backend bootstrap | [`../../../bootstrap/aws/`](../../../../bootstrap/aws) owns only the protected S3 state bucket |
+| Foundation | [`foundation/`](../foundation) owns VPC/subnets/NAT, EKS/workers/add-ons, RDS, controller IAM/policy/Pod Identity and frontend SG/rules |
+| Platform | [`platform/`](../platform) owns real Helm releases `argocd` and `aws-load-balancer-controller` |
 | App GitOps | `gitops` owns ApplicationSet, Deployment, Service, ConfigMaps, migration Job and Ingress; app sync remains manual |
 | Load balancer controller | Owns the app ALB, target groups and backend networking; Terraform only looks up the ALB |
-| Edge | [`terraform/edge/`](../terraform/edge/) owns CloudFront origin/distribution/functions/headers/log delivery and the log bucket |
+| Edge | [`edge/`](../edge) owns CloudFront origin/distribution/functions/headers/log delivery and the log bucket |
 | Credential provisioning | App database login, database Secret, GHCR Secret and Argo CD Git credential stay outside Terraform/app Git |
 
 Foundation has public NAT subnets, private worker/ALB subnets and isolated database
@@ -55,9 +55,9 @@ the ALB is internal/IPv4/in the expected VPC with that group attached.
 the single ignored allowlist used for foundation and edge. Passwords and tokens
 are never outputs. Foundation's `database` output contains connection metadata
 and a Secrets Manager ARN, not its password. Platform chart pins and values live
-in [`argocd/`](../argocd/) and
-[`load-balancer-controller/`](../load-balancer-controller/). The controller policy
-remains pinned in [`policies/`](../policies/); functions/tests remain at the root.
+in [`argocd/`](../argocd) and
+[`load-balancer-controller/`](../load-balancer-controller). The controller policy
+remains pinned in [`policies/`](../policies); functions/tests remain alongside the stage roots in `environments/aws/dev`.
 
 ## Operating sequence
 
@@ -69,8 +69,11 @@ remains pinned in [`policies/`](../policies/); functions/tests remain at the roo
    apply edge. Verify HTTPS, app/database authentication, address restrictions and
    actual logs. Finish with full plans for all deployed roots.
 
-[`scripts/plan.sh`](../scripts/plan.sh) saves reviewed full plans and invokes
-[`scripts/check-stage.sh`](../scripts/check-stage.sh) first. Foundation is valid
+The [public planner](../../../../scripts/plan.sh), with `--environment aws/dev`
+and an explicit `--stage`, selects one root and clears ambient Terraform
+workspace/backend arguments. It delegates to the stage helper, which invokes
+[`scripts/check-stage.sh`](../scripts/check-stage.sh) before saving a full plan.
+Platform and edge also require an explicit `--context`. Foundation is valid
 before an ALB exists; no bootstrap targets are required. Separate roots cannot
 express a Terraform dependency graph for removal: destroy edge, pause app
 reconciliation/remove Ingresses, wait for the running controller to remove ALBs/

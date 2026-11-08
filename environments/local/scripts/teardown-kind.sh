@@ -39,7 +39,7 @@ if [[ ! "$cluster" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
 fi
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-workspace_root="$(cd -- "$project_root/.." && pwd -P)"
+workspace_root="$(cd -- "$project_root/../../.." && pwd -P)"
 kubeconfig="${INFRA_LOCAL_KUBECONFIG:-$HOME/.kube/config}"
 if [[ "$kubeconfig" != /* || "$kubeconfig" == *:* ]]; then
   printf 'Error: select one absolute kubeconfig file with INFRA_LOCAL_KUBECONFIG.\n' >&2
@@ -96,11 +96,11 @@ esac
 backup_dir="$(mktemp -d "$backup_parent/$cluster-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX")"
 printf 'Private Secrets/state backup: %s\n' "$backup_dir"
 "${kube[@]}" get secrets --all-namespaces -o yaml > "$backup_dir/secrets.yaml"
-for state_file in "$project_root/terraform/platform/"*.tfstate*; do
+for state_file in "$project_root/platform/"*.tfstate*; do
   [[ -f "$state_file" ]] || continue
-  mkdir -p -- "$backup_dir/terraform/platform"
-  cp -p -- "$state_file" "$backup_dir/terraform/platform/"
-  chmod 600 "$backup_dir/terraform/platform/"*
+  mkdir -p -- "$backup_dir/platform"
+  cp -p -- "$state_file" "$backup_dir/platform/"
+  chmod 600 "$backup_dir/platform/"*
 done
 
 maintenance_started=false

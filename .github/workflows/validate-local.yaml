@@ -47,4 +47,4 @@ jobs:
           echo "$tool_dir" >> "$GITHUB_PATH"
 
       - name: Validate Terraform, bootstrap, Argo CD chart and shared platform
-        run: ./scripts/validate.sh
+        run: ./scripts/validate.sh --environment local

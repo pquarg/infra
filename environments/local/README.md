@@ -1,23 +1,23 @@
 # Local infrastructure
 
-This independent repository provisions the local platform used by
-[`gitops`](../gitops/README.md): a kind cluster, Argo CD and shared Traefik
+This environment in the consolidated `infra` repository provisions the local platform used by
+[`gitops`](../../../gitops/README.md): a kind cluster, Argo CD and shared Traefik
 installed through Terraform Helm releases, and a separate Compose PostgreSQL
-database. Application source and image builds live in `../apps/`; application
+database. Application source and image builds live in `../../../apps/`; application
 manifests, connection Secrets and schema migration Jobs live in `gitops`.
 
-Run commands on this page from `infra-local` unless a step changes directory.
+Run commands on this page from `infra/environments/local` unless a step changes directory.
 Complete the database setup, platform setup and GitOps app setup in that order.
 An accessible Argo CD UI confirms the controller is running; the app still
 needs its database and credentials before it can start.
 
 ```text
-infra-local/
+infra/environments/local/
   kind/cluster.example.yaml    # Cluster and localhost ingress port
   database/                    # Separate deployment PostgreSQL Compose service
   argocd/                      # Pinned Helm chart and values
   traefik/                     # Pinned Helm chart and values
-  terraform/platform/          # One local state for both controller releases
+  platform/                    # One local state for both controller releases
   scripts/                     # Create, bootstrap, readiness and validation
   docs/database.md             # Database setup, credentials, backup and restore
   docs/terraform.md            # Platform plans, state recovery and upgrades
@@ -36,7 +36,7 @@ by image digest, sharing EKS's configured `1.36` minor version.
 See the [kind release images](https://github.com/kubernetes-sigs/kind/releases/tag/v0.33.0).
 
 Validation also needs Helm 3 (CI uses `v3.19.0`), kubeconform `v0.8.0` and
-Docker Compose. It validates Compose configuration without a running daemon.
+Docker Compose and Python 3. It validates Compose configuration without a running daemon.
 Internet access is required for pinned providers, images, charts and schemas.
 Ports `127.0.0.1:80` and `127.0.0.1:5433` must be available.
 The database uses Docker Desktop host routing; see [database setup](docs/database.md).
@@ -72,9 +72,11 @@ ports. Cluster replacement follows the [rebuild procedure](docs/rebuild.md).
 
 To select another name/config, use `./scripts/create-cluster.sh another-cluster
 /absolute/config.yaml` and pass that name to platform scripts. Use one cluster
-per Terraform checkout/state. Set `cluster_name` and `kubeconfig_path` in ignored
-`terraform/platform/terraform.tfvars` for manual Terraform commands; its example
-shows the available settings.
+per Terraform checkout/state. The public planner selects the standard
+`deployment` target explicitly; ignored `platform/terraform.tfvars` cannot
+redirect it. Other clusters require a separate checkout/state and an explicitly
+adapted planning target. Use `--kubeconfig /absolute/file` to select another
+kubeconfig for the standard target.
 
 ## 2. Install Argo CD and shared ingress
 
@@ -82,7 +84,7 @@ shows the available settings.
 ./scripts/bootstrap-kind.sh
 ```
 
-Bootstrap initializes `terraform/platform`, asks you to review and approve one
+Bootstrap initializes `platform`, asks you to review and approve one
 apply for both pinned Helm releases, then verifies Argo CD CRDs/controllers,
 Traefik, its IngressClass/NodePort and the kind host port mapping. It registers
 no app. It refuses existing controllers or Helm records absent from its state;
@@ -130,7 +132,7 @@ The platform provides:
 | Deployment database | Compose PostgreSQL at `host.docker.internal:5433` from kind Pods |
 | Database persistence | External Docker volume `deployment-project-myfastapiapp-postgres` |
 
-Follow [local deployment setup](../gitops/docs/local/setup.md) to provision the
+Follow [local deployment setup](../../../gitops/docs/local/setup.md) to provision the
 app namespace, connection and registry Secrets, selected image and Git access.
 Complete its app preparation before running the GitOps bootstrap. For
 `myfastapiapp`, all of these must be ready:
@@ -142,7 +144,7 @@ Complete its app preparation before running the GitOps bootstrap. For
 - The connection uses `host.docker.internal:5433`, and the Pod database probe
   reports `Database connectivity, app privileges and transactional DDL passed.`
 
-The [GitOps setup guide](../gitops/docs/local/setup.md#4-validate-publish-and-register-staging)
+The [GitOps setup guide](../../../gitops/docs/local/setup.md#4-validate-publish-and-register-staging)
 contains the validation, publication and registration commands to run next.
 
 The `root` Application discovers `apps/*/overlays/local` through its
@@ -150,7 +152,7 @@ ApplicationSet. App sync is automatic, including schema migrations, so the
 database and credentials must be ready first. Root **Synced** confirms
 registration; check each app's **Synced / Healthy** status and verification
 procedure before claiming deployment success.
-If sync fails, use the app's [first-sync troubleshooting](../gitops/apps/myfastapiapp/overlays/local/README.md#troubleshoot-the-first-sync).
+If sync fails, use the app's [first-sync troubleshooting](../../../gitops/apps/myfastapiapp/overlays/local/README.md#troubleshoot-the-first-sync).
 
 ## Validate and update
 
@@ -193,7 +195,7 @@ and deletes only the selected kind cluster. It preserves Compose PostgreSQL,
 its external volume, local configuration, Terraform state and backups.
 Database backup, restore and deliberate reset are [separate procedures](docs/database.md).
 
-Platform state lives at `terraform/platform/terraform.tfstate` and may contain
+Platform state lives at `platform/terraform.tfstate` and may contain
 credentials. Keep it and its backups private. Use separate state/checkouts for
 different cluster names. Do not use `terraform destroy` for cluster replacement:
 kind owns the cluster and both Helm releases have `prevent_destroy`.

@@ -2,7 +2,7 @@ resource "helm_release" "load_balancer_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
-  version    = trimspace(file("${path.module}/../../load-balancer-controller/chart-version.txt"))
+  version    = trimspace(file("${path.module}/../load-balancer-controller/chart-version.txt"))
   namespace  = "kube-system"
 
   atomic        = true
@@ -12,7 +12,7 @@ resource "helm_release" "load_balancer_controller" {
   max_history   = 5
 
   values = [
-    file("${path.module}/../../load-balancer-controller/values.yaml"),
+    file("${path.module}/../load-balancer-controller/values.yaml"),
     yamlencode({
       clusterName = var.cluster_name
       region      = "eu-north-1"

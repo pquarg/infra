@@ -1,14 +1,14 @@
 # Terraform for the local platform
 
 kind owns the cluster and host port mapping. One local Terraform root,
-`terraform/platform`, owns Helm releases `argocd/argocd` and `traefik/traefik`.
+`platform`, owns Helm releases `argocd/argocd` and `traefik/traefik`.
 Argo CD owns app resources from `gitops`; Compose owns the separate database.
 Terraform reads this checkout and uses local state, with no AWS provider or
 backend. See [prerequisites](../README.md#prerequisites) for required tools.
 
 ## Shared versions and upgrades
 
-Both infrastructure repositories select Argo CD chart `10.11.6`, with default
+Both infrastructure environments select Argo CD chart `10.11.6`, with default
 images Argo CD `v3.5.6`, Dex `v2.46.1` and Redis `8.6.4-alpine`. See the chart's
 [versioned values](https://github.com/argoproj/argo-helm/blob/argo-cd-10.11.6/charts/argo-cd/values.yaml).
 Local uses `application.instanceLabelKey: app.kubernetes.io/instance` for app
@@ -24,21 +24,24 @@ rendered resources as part of an upgrade.
 
 ## Inspect and apply manually
 
-Defaults are cluster `deployment`, context `kind-deployment`. Use one cluster
-per checkout/state. Providers explicitly use `kind-<cluster_name>` and one
-`kubeconfig_path`. Configure another cluster/file in ignored
-`terraform/platform/terraform.tfvars` using its example.
+The public planner selects cluster `deployment`, context `kind-deployment`,
+and the local platform state. It checks cluster/state ownership and refuses
+existing controller installations missing from that state before planning.
+It also clears ambient Terraform workspace/backend arguments.
 
-Run from `infra-local` after creating kind:
+Run from `infra/environments/local` after creating kind:
 
 ```sh
-umask 077
-terraform -chdir=terraform/platform init -lockfile=readonly
-terraform -chdir=terraform/platform plan -out=platform.tfplan
-terraform -chdir=terraform/platform show platform.tfplan
-terraform -chdir=terraform/platform apply platform.tfplan
+../../scripts/plan.sh --environment local --stage platform --context kind-deployment
+# Review the displayed plan before applying the saved file:
+terraform -chdir=platform apply platform.tfplan
 ./scripts/setup-ingress-kind.sh
 ```
+
+Pass `--kubeconfig /absolute/file` to the planner to select another kubeconfig
+file. The planner explicitly selects the standard cluster even when ignored
+Terraform variables specify another name. Other local clusters require separate
+checkouts/state and an explicitly adapted target; do not repoint existing state.
 
 A fresh plan creates two Helm releases. `scripts/bootstrap-kind.sh` performs
 one interactive apply, then checks CRDs and both controllers. It refuses
@@ -48,12 +51,12 @@ inspect `helm template` output when reviewing changes.
 
 ## Maintain provider checksums
 
-The committed `terraform/platform/.terraform.lock.hcl` contains checksums for
+The committed `platform/.terraform.lock.hcl` contains checksums for
 Apple Silicon (`darwin_arm64`) and GitHub Actions (`linux_amd64`). After changing
-a provider pin, regenerate both from `infra-local`:
+a provider pin, regenerate both from `infra/environments/local`:
 
 ```sh
-terraform -chdir=terraform/platform providers lock \
+terraform -chdir=platform providers lock \
   -platform=darwin_arm64 -platform=linux_amd64
 ```
 
@@ -75,9 +78,9 @@ and restore their bindings before applying. Use the selected kubeconfig/context:
 ```sh
 helm --kubeconfig "$HOME/.kube/config" --kube-context kind-deployment -n argocd list --all
 helm --kubeconfig "$HOME/.kube/config" --kube-context kind-deployment -n traefik list --all
-terraform -chdir=terraform/platform init -lockfile=readonly
-terraform -chdir=terraform/platform import helm_release.argocd argocd/argocd
-terraform -chdir=terraform/platform import helm_release.traefik traefik/traefik
+terraform -chdir=platform init -lockfile=readonly
+terraform -chdir=platform import helm_release.argocd argocd/argocd
+terraform -chdir=platform import helm_release.traefik traefik/traefik
 ```
 
 Import only verified releases absent from state. Match their pinned charts and

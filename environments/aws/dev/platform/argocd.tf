@@ -2,7 +2,7 @@ resource "helm_release" "argocd" {
   name             = "argocd"
   repository       = "https://argoproj.github.io/argo-helm"
   chart            = "argo-cd"
-  version          = trimspace(file("${path.module}/../../argocd/chart-version.txt"))
+  version          = trimspace(file("${path.module}/../argocd/chart-version.txt"))
   namespace        = "argocd"
   create_namespace = true
 
@@ -12,7 +12,7 @@ resource "helm_release" "argocd" {
   timeout       = 600
   max_history   = 5
 
-  values         = [file("${path.module}/../../argocd/values.yaml")]
+  values         = [file("${path.module}/../../../../shared/argocd/values.yaml"), file("${path.module}/../argocd/values.yaml")]
   take_ownership = false
   force_update   = false
 }

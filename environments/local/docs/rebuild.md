@@ -16,7 +16,7 @@ Docker volume remain running and unchanged.
    port mapping and pinned `nodes[].image` from `kind/cluster.example.yaml`.
    Changing this configuration does not change a running cluster. PostgreSQL
    needs no kind storage mount.
-3. Preview teardown from `infra-local`:
+3. Preview teardown from `infra/environments/local`:
 
    ```sh
    ./scripts/teardown-kind.sh --dry-run
@@ -45,7 +45,7 @@ Docker volume remain running and unchanged.
    Keep platform state for this same named cluster. Terraform refreshes it and
    proposes recreating the missing releases; review the combined apply. If the
    separate database was stopped, start it with `./scripts/local-database.sh up`.
-6. Follow [local app setup](../../gitops/docs/local/setup.md) to recreate the
+6. Follow [local app setup](../../../../gitops/docs/local/setup.md) to recreate the
    namespace, connection and registry Secrets, selected images and Git access.
    Images loaded into the deleted cluster must be loaded again. Run the Pod
    connectivity probe before registering apps, then check migrations, readiness,

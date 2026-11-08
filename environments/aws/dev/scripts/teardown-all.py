@@ -18,6 +18,8 @@ import time
 
 
 ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY = ROOT.parents[2]
+BOOTSTRAP = REPOSITORY / "bootstrap/aws"
 PROJECT = "245361883993"
 PROFILE = "aws-project"
 REGION = "eu-north-1"
@@ -30,7 +32,7 @@ STATE_KEYS = {
     "platform": "dev/platform/terraform.tfstate",
     "edge": "dev/edge/terraform.tfstate",
 }
-RECORD_VERSION = 2
+RECORD_VERSION = 3
 PLATFORM_ADDRESSES = {"helm_release.argocd", "helm_release.load_balancer_controller"}
 SETTINGS = {
     "aws_db_instance.postgres": {
@@ -153,7 +155,7 @@ def copy_config(source, destination, backend=True):
 class Teardown:
     def __init__(self, directory, delete_backend=False):
         self.directory = directory
-        self.stages = {name: directory / "terraform" / name for name in STATE_KEYS}
+        self.stages = {name: directory / "environments/aws/dev" / name for name in STATE_KEYS}
         self.foundation = self.stages["foundation"]
         self.platform = self.stages["platform"]
         self.edge = self.stages["edge"]
@@ -167,7 +169,7 @@ class Teardown:
         }
         if self.record.get("version") != RECORD_VERSION or self.record.get("state_keys") != STATE_KEYS:
             raise Failure("Invalid teardown record: expected the current version and stage state keys. "
-                          "Inspect the recovery artifacts before resuming.")
+                          "Resume pre-consolidation records with their original checkout/tool; see docs/teardown.md.")
         if self.record.get("delete_backend") != delete_backend:
             raise Failure("Resume must use the original --delete-backend scope.")
         if self.record.get("project") != PROJECT:
@@ -220,17 +222,18 @@ class Teardown:
 
     def initialize(self):
         for name in ("functions", "policies", "argocd", "load-balancer-controller"):
-            shutil.copytree(ROOT / name, self.directory / name, dirs_exist_ok=True)
-        (self.directory / "config").mkdir(mode=0o700, exist_ok=True)
+            shutil.copytree(ROOT / name, self.directory / "environments/aws/dev" / name, dirs_exist_ok=True)
+        shutil.copytree(REPOSITORY / "shared", self.directory / "shared", dirs_exist_ok=True)
+        (self.directory / "environments/aws/dev/config").mkdir(mode=0o700, parents=True, exist_ok=True)
         if not (ROOT / "config/operator.tfvars").is_file():
             raise Failure("Prepare config/operator.tfvars before teardown; see README.md.")
-        shutil.copy2(ROOT / "config/operator.tfvars", self.directory / "config/operator.tfvars")
+        shutil.copy2(ROOT / "config/operator.tfvars", self.directory / "environments/aws/dev/config/operator.tfvars")
         for name, directory in self.stages.items():
-            source = ROOT / "terraform" / name
+            source = ROOT / name
             copy_config(source, directory)
             self.init_tf(directory, source)
-        copy_config(ROOT / "bootstrap", self.bootstrap)
-        self.init_tf(self.bootstrap, ROOT / "bootstrap")
+        copy_config(BOOTSTRAP, self.bootstrap)
+        self.init_tf(self.bootstrap, BOOTSTRAP)
 
     def init_tf(self, directory, source):
         # Reuse installed packages when available, without copying backend
@@ -336,7 +339,7 @@ class Teardown:
     def plan_apply(self, directory, name, phase, *options):
         plan = self.directory / f"{name}.tfplan"
         self.tf(directory, "validate")
-        variables = [f"-var-file={self.directory / 'config/operator.tfvars'}"] if directory in {
+        variables = [f"-var-file={self.directory / 'environments/aws/dev/config/operator.tfvars'}"] if directory in {
             self.foundation, self.edge} else []
         self.tf(directory, "plan", "-input=false", "-lock-timeout=5m",
                 f"-out={plan}", *variables, *options)
@@ -603,7 +606,7 @@ def main():
         if not shutil.which(tool):
             parser.error(f"Required command is missing: {tool}")
     private = ROOT / ".teardown"
-    private.mkdir(mode=0o700, exist_ok=True)
+    private.mkdir(mode=0o700, parents=True, exist_ok=True)
     # Prevent two commands in this checkout; Terraform also locks remote state.
     with (private / "command.lock").open("w") as lock:
         try:
@@ -613,7 +616,7 @@ def main():
         directory = args.resume.resolve() if args.resume else private / str(time.time_ns())
         if args.resume and not (directory / "progress.json").is_file():
             parser.error("Resume directory must contain progress.json")
-        directory.mkdir(mode=0o700, exist_ok=True)
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         teardown = Teardown(directory, delete_backend=args.delete_backend)
         identity = teardown.aws("sts", "get-caller-identity")
         if identity["Account"] != PROJECT:
