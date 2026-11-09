@@ -22,7 +22,7 @@ Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → p
 
 Foundation has public NAT subnets, private worker/ALB subnets and isolated database
 subnets in two Stockholm AZs. Workers remain two `t3.small` nodes; EKS uses Pod
-Identity, not IRSA. Public API access is limited by `eks_admin_cidrs`. RDS remains
+Identity, not IRSA. Public API access is limited by `admin_ipv4_cidrs`. RDS remains
 single-AZ PostgreSQL 17 on `db.t4g.micro`, with encrypted storage, worker-only
 5432 access, TLS required, managed administrator password, one-day backups,
 deletion protection, required final snapshot and retained automated backups.
@@ -64,7 +64,7 @@ remains pinned in [`policies/`](../policies); functions/tests remain alongside t
 1. Ensure the backend exists, then review/apply a full foundation plan.
 2. Verify endpoint, nodes and Pod Identity prerequisites; review/apply platform.
 3. Follow `gitops` credential/setup steps, register `bootstrap`, manually sync
-   `myfastapiapp` including its migration hook.
+   `demo-api` including its migration hook.
 4. Wait for an Active controller-created ALB with healthy targets, then review/
    apply edge. Verify HTTPS, app/database authentication, address restrictions and
    actual logs. Finish with full plans for all deployed roots.

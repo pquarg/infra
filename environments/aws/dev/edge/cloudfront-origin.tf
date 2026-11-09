@@ -1,7 +1,7 @@
 # The controller owns this ALB and its target groups. Look it up after app sync;
 # never import it into Terraform or give it a second lifecycle manager.
 data "aws_lb" "myfastapiapp_origin" {
-  name = "deployment-project-dev-app"
+  name = "dev-demo-api"
 
   lifecycle {
     postcondition {

@@ -5,7 +5,7 @@ root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf -- "$tmp"' EXIT
 mkdir -p "$tmp/bin" "$tmp/repo/scripts" "$tmp/repo/platform"
-cp "$root/scripts/bootstrap-kind.sh" "$root/scripts/setup-ingress-kind.sh" "$root/scripts/check-platform.sh" "$tmp/repo/scripts/"
+cp "$root/scripts/bootstrap-kind.sh" "$root/scripts/check-ingress-kind.sh" "$root/scripts/check-platform.sh" "$tmp/repo/scripts/"
 cat > "$tmp/bin/fake" <<'FAKE'
 #!/usr/bin/env bash
 set -euo pipefail

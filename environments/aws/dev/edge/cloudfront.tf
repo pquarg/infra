@@ -22,7 +22,7 @@ resource "aws_cloudfront_function" "ip_allowlist" {
   comment = "Restrict the learning app to the configured administrator IPv4 addresses"
   publish = true
   code = templatefile("${path.module}/../functions/ip-allowlist.js.tftpl", {
-    allowed_ips = jsonencode([for cidr in var.eks_admin_cidrs : trimsuffix(cidr, "/32")])
+    allowed_ips = jsonencode([for cidr in var.admin_ipv4_cidrs : trimsuffix(cidr, "/32")])
   })
 }
 

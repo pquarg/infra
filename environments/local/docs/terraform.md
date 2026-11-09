@@ -35,7 +35,7 @@ Run from `infra/environments/local` after creating kind:
 ../../scripts/plan.sh --environment local --stage platform --context kind-deployment
 # Review the displayed plan before applying the saved file:
 terraform -chdir=platform apply platform.tfplan
-./scripts/setup-ingress-kind.sh
+./scripts/check-ingress-kind.sh
 ```
 
 Pass `--kubeconfig /absolute/file` to the planner to select another kubeconfig

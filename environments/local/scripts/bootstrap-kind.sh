@@ -42,5 +42,5 @@ terraform -chdir="$project_root/platform" apply "${terraform_args[@]}"
 "${kube[@]}" -n argocd rollout status deployment/argocd-repo-server --timeout=300s
 "${kube[@]}" -n argocd rollout status deployment/argocd-applicationset-controller --timeout=300s
 "${kube[@]}" -n argocd rollout status statefulset/argocd-application-controller --timeout=300s
-"$project_root/scripts/setup-ingress-kind.sh" "$cluster"
+"$project_root/scripts/check-ingress-kind.sh" "$cluster"
 printf 'Platform ready. Follow README.md to connect gitops and provision app credentials.\n'

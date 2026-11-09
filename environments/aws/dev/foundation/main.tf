@@ -25,7 +25,7 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
-output "aws_project_id" {
-  description = "AWS project targeted by this configuration."
+output "aws_account_id" {
+  description = "AWS account targeted by this configuration."
   value       = data.aws_caller_identity.current.account_id
 }

@@ -121,6 +121,10 @@ credentials are separate.
 
 ## 3. Hand over to gitops
 
+Existing `myfastapiapp` installations need the
+[app rename handoff](../../../gitops/docs/app-rename.md) before GitOps publication.
+The platform and existing Compose database/storage identities remain unchanged.
+
 The platform provides:
 
 | Setting | Value |
@@ -135,12 +139,12 @@ The platform provides:
 Follow [local deployment setup](../../../gitops/docs/local/setup.md) to provision the
 app namespace, connection and registry Secrets, selected image and Git access.
 Complete its app preparation before running the GitOps bootstrap. For
-`myfastapiapp`, all of these must be ready:
+`demo-api`, all of these must be ready:
 
 - Compose PostgreSQL is healthy and the existing app password is available.
 - Argo CD can read the deployment Git repository.
-- Namespace `myfastapiapp` contains `registry-credentials` for private GHCR
-  pulls and `myfastapiapp-secrets` for the database connection.
+- Namespace `demo-api` contains `registry-credentials` for private GHCR
+  pulls and `demo-api-secrets` for the database connection.
 - The connection uses `host.docker.internal:5433`, and the Pod database probe
   reports `Database connectivity, app privileges and transactional DDL passed.`
 
@@ -152,7 +156,7 @@ ApplicationSet. App sync is automatic, including schema migrations, so the
 database and credentials must be ready first. Bootstrap **Synced** confirms
 registration; check each app's **Synced / Healthy** status and verification
 procedure before claiming deployment success.
-If sync fails, use the app's [first-sync troubleshooting](../../../gitops/apps/myfastapiapp/overlays/local/README.md#troubleshoot-the-first-sync).
+If sync fails, use the app's [first-sync troubleshooting](../../../gitops/apps/demo-api/overlays/local/README.md#troubleshoot-the-first-sync).
 
 ## Validate and update
 

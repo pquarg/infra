@@ -27,6 +27,14 @@ here are scoped to this existing target.
 
 ## Setup and changes
 
+The administrator allowlist variable is now `admin_ipv4_cidrs`: rename the key
+in any existing ignored `config/operator.tfvars` without changing its addresses.
+The account output is now `aws_account_id`. Existing app deployments also need
+the [app/ALB rename handoff](../../../../gitops/docs/app-rename.md) before using
+the new edge lookup for `dev-demo-api`. Terraform resource addresses and physical
+security-group/CloudFront names remain stable; the `myfastapiapp_*` outputs remain
+valid for existing consumers.
+
 Application deployments use [the GitOps repository](../../../../gitops/README.md).
 
 Install Terraform `1.17.x` (CI `1.17.1`), AWS CLI v2, kubectl, Python 3 and Node.js

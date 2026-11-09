@@ -70,7 +70,7 @@ use `host.docker.internal:5433`. This uses Docker Desktop's
 [documented host connection](https://docs.docker.com/desktop/features/networking/networking-how-tos/).
 No database port is deliberately bound to the laptop's LAN interfaces. Verify the
 actual path from a kind Pod before deploying; Docker Desktop, VPN and firewall
-settings can affect it. Use the [app setup](../../../../gitops/apps/myfastapiapp/overlays/local/README.md#provision-credentials)
+settings can affect it. Use the [app setup](../../../../gitops/apps/demo-api/overlays/local/README.md#provision-credentials)
 to provision its connection Secret and run the Kubernetes connectivity probe.
 That probe must pass before registering the app with Argo CD. A healthy
 Compose container checks PostgreSQL locally; the probe checks the actual
@@ -163,8 +163,8 @@ active syncs/migration Jobs, stop traffic and all writers, and scale the API to
 zero using context `kind-deployment`:
 
 ```sh
-kubectl --context kind-deployment -n myfastapiapp scale deployment/myfastapiapp-deployment --replicas=0
-kubectl --context kind-deployment -n myfastapiapp wait --for=delete pod -l app=myfastapiapp-pod --timeout=120s
+kubectl --context kind-deployment -n demo-api scale deployment/demo-api --replicas=0
+kubectl --context kind-deployment -n demo-api wait --for=delete pod -l app=demo-api --timeout=120s
 ```
 
 Then open `./scripts/local-database.sh psql` and deliberately run:

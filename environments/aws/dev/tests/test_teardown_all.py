@@ -339,7 +339,7 @@ class StageTests(unittest.TestCase):
     def test_invalid_record_and_changed_scope_are_rejected_before_commands(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)
-            (path / "progress.json").write_text(json.dumps({"project": teardown.PROJECT, "completed": []}))
+            (path / "progress.json").write_text(json.dumps({"project": teardown.AWS_ACCOUNT_ID, "completed": []}))
             with self.assertRaisesRegex(teardown.Failure, "Invalid teardown record"):
                 teardown.Teardown(path)
             (path / "progress.json").unlink()
@@ -395,7 +395,7 @@ class StageTests(unittest.TestCase):
             original_copy = teardown.shutil.copy2
             def copy(source, destination):
                 if source.name == "operator.tfvars":
-                    Path(destination).write_text('eks_admin_cidrs = ["192.0.2.1/32"]')
+                    Path(destination).write_text('admin_ipv4_cidrs = ["192.0.2.1/32"]')
                 else:
                     original_copy(source, destination)
             original_is_file = Path.is_file
@@ -420,7 +420,7 @@ class StageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)
             (path / "progress.json").write_text(json.dumps({
-                "version": 2, "project": teardown.PROJECT, "state_keys": teardown.STATE_KEYS,
+                "version": 2, "project": teardown.AWS_ACCOUNT_ID, "state_keys": teardown.STATE_KEYS,
                 "delete_backend": False, "completed": [],
             }))
             with self.assertRaisesRegex(teardown.Failure, "original checkout/tool"):
@@ -432,7 +432,7 @@ class CommandTests(unittest.TestCase):
     def test_check_never_runs_deletion_or_prompts(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(teardown, "ROOT", Path(directory)), \
                 patch.object(teardown.shutil, "which", return_value="installed"), \
-                patch.object(teardown.Teardown, "aws", return_value={"Account": teardown.PROJECT}), \
+                patch.object(teardown.Teardown, "aws", return_value={"Account": teardown.AWS_ACCOUNT_ID}), \
                 patch.object(teardown.Teardown, "initialize") as initialize, \
                 patch.object(teardown.Teardown, "inventory") as inventory, \
                 patch.object(teardown.Teardown, "execute") as execute, \
@@ -443,7 +443,7 @@ class CommandTests(unittest.TestCase):
             execute.assert_not_called()
             prompt.assert_not_called()
 
-    def test_wrong_project_aborts_before_initializing_or_deleting(self):
+    def test_wrong_account_aborts_before_initializing_or_deleting(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(teardown, "ROOT", Path(directory)), \
                 patch.object(teardown.shutil, "which", return_value="installed"), \
                 patch.object(teardown.Teardown, "aws", return_value={"Account": "other"}), \

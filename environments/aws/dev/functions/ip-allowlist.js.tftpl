@@ -1,5 +1,5 @@
 // CloudFront supplies viewer.ip from the connection. Never trust forwarded headers.
-// Terraform renders only the IPv4 /32 addresses validated by eks_admin_cidrs.
+// Terraform renders only the IPv4 /32 addresses validated by admin_ipv4_cidrs.
 var allowedIps = ${allowed_ips};
 
 function handler(event) {

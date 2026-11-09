@@ -39,3 +39,12 @@ and explicit selection. Keep provider and backend selection at the target root.
 Shared files use the checked-out commit; production that needs an older desired
 implementation must select immutable module refs or versioned bundles explicitly.
 Never run a combined apply or destroy across targets.
+
+## App naming handoff
+
+The desired app/namespace is now `demo-api`; the Python package is `demo_api`.
+The existing database/login, Compose projects/volumes, credential paths, cluster
+names and Terraform resource addresses remain stable. The AWS ALB selected by
+GitOps and edge is now `dev-demo-api`. Follow the
+[app rename handoff](../../gitops/docs/app-rename.md) before publishing GitOps
+or applying an edge plan to an existing environment.

@@ -98,7 +98,7 @@ and the pinned Helm passed:
   Helm renders/schema checks and database/bootstrap/teardown safety tests.
 - `./scripts/validate.sh --environment aws/dev`: all four Terraform roots,
   AWS stage guards, CloudFront function tests and 35 teardown tests.
-- `../gitops/scripts/validate.sh --ready`: both overlays, schemas and helper tests.
+- `../gitops/scripts/validate.sh --no-placeholders`: both overlays, schemas and helper tests.
 - Eight public dispatch tests cover root/backend isolation, invalid target/stage
   rejection, wrong account/context/state, one-stage plans and validation dispatch.
 - Before/after Argo CD renders at chart `10.11.6` are byte-for-byte identical
@@ -107,7 +107,7 @@ and the pinned Helm passed:
 - Private-path ignore checks, documentation paths/links and whitespace checks.
 
 Publication checks on 2026-11-08 reran `./scripts/validate.sh --all` and
-`../gitops/scripts/validate.sh --ready` successfully with network access, the
+`../gitops/scripts/validate.sh --no-placeholders` successfully with network access, the
 temporary pinned Helm binary and a temporary Terraform provider cache. Relative
 documentation paths, Markdown heading anchors and whitespace checks also passed
 across infrastructure, GitOps and application documentation.

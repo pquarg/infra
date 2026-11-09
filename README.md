@@ -2,7 +2,7 @@
 
 One repository owns the local kind platform and the existing AWS development
 platform. Each target has independent Terraform roots, state, credentials and
-plans. Application source remains in `../apps/myfastapiapp`; Argo CD reads
+plans. Application source remains in `../apps/demo-api`; Argo CD reads
 application deployments from `../gitops`, independently of this repository.
 
 | Target | Setup | Terraform roots |

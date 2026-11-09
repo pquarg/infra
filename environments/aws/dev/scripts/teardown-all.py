@@ -20,13 +20,13 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = ROOT.parents[2]
 BOOTSTRAP = REPOSITORY / "bootstrap/aws"
-PROJECT = "245361883993"
+AWS_ACCOUNT_ID = "245361883993"
 PROFILE = "aws-project"
 REGION = "eu-north-1"
 CLUSTER = "deployment-project-dev"
 DATABASE = "deployment-project-dev-postgres"
-STATE_BUCKET = f"deployment-project-tfstate-{PROJECT}-{REGION}"
-LOG_BUCKET = f"deployment-project-cf-logs-{PROJECT}-{REGION}"
+STATE_BUCKET = f"deployment-project-tfstate-{AWS_ACCOUNT_ID}-{REGION}"
+LOG_BUCKET = f"deployment-project-cf-logs-{AWS_ACCOUNT_ID}-{REGION}"
 STATE_KEYS = {
     "foundation": "dev/terraform.tfstate",
     "platform": "dev/platform/terraform.tfstate",
@@ -164,7 +164,8 @@ class Teardown:
         self.record_path = directory / "progress.json"
         self.schemas = None
         self.record = json.loads(self.record_path.read_text()) if self.record_path.exists() else {
-            "version": RECORD_VERSION, "project": PROJECT, "completed": [],
+            # Keep the serialized v3 key compatible with private recovery records.
+            "version": RECORD_VERSION, "project": AWS_ACCOUNT_ID, "completed": [],
             "state_keys": STATE_KEYS, "delete_backend": delete_backend,
         }
         if self.record.get("version") != RECORD_VERSION or self.record.get("state_keys") != STATE_KEYS:
@@ -172,8 +173,8 @@ class Teardown:
                           "Resume pre-consolidation records with their original checkout/tool; see docs/teardown.md.")
         if self.record.get("delete_backend") != delete_backend:
             raise Failure("Resume must use the original --delete-backend scope.")
-        if self.record.get("project") != PROJECT:
-            raise Failure("Recovery record targets a different AWS project.")
+        if self.record.get("project") != AWS_ACCOUNT_ID:
+            raise Failure("Recovery record targets a different AWS account.")
         self.env = {k: v for k, v in os.environ.items()
                     if not k.startswith(("TF_CLI_ARGS", "TF_LOG"))
                     and k not in {"TF_DATA_DIR", "TF_WORKSPACE"}}
@@ -264,7 +265,7 @@ class Teardown:
         stage = next((name for name, path in self.stages.items() if path == directory), None)
         if stage:
             metadata = self.aws("s3api", "head-object", "--bucket", STATE_BUCKET,
-                                "--key", STATE_KEYS[stage], "--expected-bucket-owner", PROJECT,
+                                "--key", STATE_KEYS[stage], "--expected-bucket-owner", AWS_ACCOUNT_ID,
                                 absent=("404",))
             if metadata is None:
                 state = {"resources": []}
@@ -279,7 +280,7 @@ class Teardown:
 
     def inventory(self):
         self.aws("s3api", "head-bucket", "--bucket", STATE_BUCKET,
-                 "--expected-bucket-owner", PROJECT)
+                 "--expected-bucket-owner", AWS_ACCOUNT_ID)
         states = {name: self.state(directory, f"{name}-before.tfstate")
                   for name, directory in self.stages.items()}
         validate_stage_states(states)
@@ -595,7 +596,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--delete-backend", action="store_true",
                         help="also permanently delete the versioned state backend as the final step")
-    parser.add_argument("--yes", action="store_true", help="skip the initial typed project confirmation")
+    parser.add_argument("--yes", action="store_true", help="skip the initial typed AWS account confirmation")
     parser.add_argument("--check", action="store_true", help="read-only AWS preflight; do not plan/apply or delete")
     parser.add_argument("--resume", type=Path, metavar="DIRECTORY", help="resume an interrupted run from its private record")
     args = parser.parse_args()
@@ -619,9 +620,9 @@ def main():
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         teardown = Teardown(directory, delete_backend=args.delete_backend)
         identity = teardown.aws("sts", "get-caller-identity")
-        if identity["Account"] != PROJECT:
-            raise Failure(f"Wrong AWS project: {identity['Account']}; expected {PROJECT}.")
-        print(f"AWS project {PROJECT}; profile {PROFILE}; Region {REGION}.\n"
+        if identity["Account"] != AWS_ACCOUNT_ID:
+            raise Failure(f"Wrong AWS account: {identity['Account']}; expected {AWS_ACCOUNT_ID}.")
+        print(f"AWS account {AWS_ACCOUNT_ID}; profile {PROFILE}; Region {REGION}.\n"
               "This deletes the deployment, ALL its database backups/snapshots, access logs,\n"
               + ("and the versioned state bucket. No AWS recovery copy is retained.\n"
                  if args.delete_backend else "The versioned state backend is retained.\n") +
@@ -638,7 +639,7 @@ def main():
             if not args.yes:
                 if not sys.stdin.isatty():
                     raise Failure("Interactive confirmation requires a terminal; use --yes to authorize deletion.")
-                if input(f"Type {PROJECT} to permanently delete all of the above: ").strip() != PROJECT:
+                if input(f"Type {AWS_ACCOUNT_ID} to permanently delete all of the above: ").strip() != AWS_ACCOUNT_ID:
                     raise Failure("Confirmation did not match; no deletion started.")
             teardown.execute()
             print("\nTeardown complete: recorded deployment resources, recovery data and logs removed.\n"
