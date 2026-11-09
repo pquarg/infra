@@ -82,12 +82,21 @@ mounts. Local does not emulate RDS TLS or managed backups.
 ## Checkout consolidation
 
 The Compose project, external volume and external password paths remain the same.
-A running container may still bind the original checkout's `database/init-app.sh`.
-Keep that checkout available: moving configuration does not require restarting or
-recreating PostgreSQL. The helper in the new checkout addresses the same project;
-a future explicitly chosen `up` may recreate its container to use the new bind path,
-while retaining the external volume and passwords. Do not restart it just to
-finish consolidation. See [the handoff](../../../docs/consolidation.md).
+The original `infra-local/` checkout is no longer present. A container created
+before consolidation may still reference its `database/init-app.sh` bind path;
+its current mounts and health have not been verified by this documentation update.
+Before a future start or recreation, inspect that container's mounts and confirm
+the current `database/init-app.sh`, existing external volume and existing password
+files are available. Back up and verify the database before planned disruption.
+The helper in this checkout addresses the same Compose project; an explicitly
+chosen `up` may recreate the container with the current init-script path while
+retaining the external volume and passwords. Keep the existing credentials and
+volume; restarting a populated volume does not rerun initialization. No restart
+is required just to update documentation. See [the handoff](../../../docs/consolidation.md).
+
+The `$HOME/.local/share/infra-local/` paths in these runbooks are external
+credential and backup directories, separate from the removed source checkout.
+Keep them in place; their name does not make them obsolete repository backups.
 
 ## Lifecycle and credentials
 

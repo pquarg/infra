@@ -58,11 +58,18 @@ command lock prevents two invocations in this checkout. Freeze other applies.
 
 ## Pre-consolidation records
 
-Existing `.teardown` records stay in the original `infra-aws` checkout. Use the
-original checkout and the tool revision that created that run to resume it.
+The original `infra-aws` checkout is no longer present, so its old `.teardown`
+records are unavailable at that location. To resume an old run, first recover a
+separately preserved private run directory and the matching tool revision with
+the original layout and scope. The imported Git history contains earlier tool
+revisions, but not ignored progress records, private state/configuration copies
+or credentials. Without those artifacts, an old run cannot be resumed from Git
+alone; inspect current AWS resources and state under a separately authorized
+AWS task before choosing recovery steps.
+
 The consolidated tool rejects older record versions because private paths have
-changed. Never rewrite old snapshots or copy them into the new record layout.
-The preserved source history contains the earlier tool revisions.
+changed. Keep recovered snapshots unchanged rather than copying them into the
+new record layout. See [the consolidation handoff](../../../../docs/consolidation.md).
 
 ## Failure and resume
 

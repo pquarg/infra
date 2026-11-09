@@ -16,10 +16,13 @@ imports preserve their complete committed histories as ancestors of `infra/main`
 | `infra-local` | `47d109d4b6a3462a63e990699aa61932530694c3` | `environments/local` |
 | `infra-aws` | `b72a607713e0506a1f38bed023457055758bb781` | `environments/aws/dev` |
 
-The original branches/remotes, `.repo-backups/`, database volumes, external
-credentials and AWS teardown records remain in place. Ignored `INACTIVE.md`
-notices in the source checkouts identify them as recovery references. Do not
-operate normal plans/applies there. The new private GitHub repository is
+The original checkouts and `.repo-backups/` were preserved during consolidation,
+but `../infra-local/`, `../infra-aws/` and `../.repo-backups/` are no longer present
+as of 2026-11-08. Operate from `infra`. The imported history preserves committed
+source, not ignored credentials, state, saved plans or teardown records from
+those directories. Their removal does not establish the status of running
+resources or external data; no live health checks were performed for this
+documentation update. The private GitHub repository is
 [`pquarg/infra`](https://github.com/pquarg/infra), configured as `origin` for this
 checkout. Consolidation changes are committed and pushed in each owning
 repository: infrastructure here, GitOps handoff changes in `pquarg/gitops`, and
@@ -34,28 +37,33 @@ The authoritative writable local state is
 from `../infra-local/terraform/platform/terraform.tfstate`, retaining lineage,
 serial, `kind-deployment` output and both Helm release addresses. No Terraform
 state command changed any binding. The original operating state path is now
-absent, so there are no two writable operating copies. Never initialize/apply
-from the inactive checkout as if it were a fresh installation.
+absent, so there are no two writable operating copies. Recover from the current
+state and verified resources rather than treating a restored old checkout as a
+fresh installation.
 
-A read-only snapshot remains at
-`../infra-local/.generated/consolidation-20261108/terraform.tfstate`; another
-private snapshot and the hash/lineage/serial handoff ledger are in ignored
-`.handoff/`. These snapshots are backups, not alternate active states. Rollback
-must use the latest authoritative state, with a coordinated freeze and only one
+A read-only consolidation snapshot remains at `.handoff/local-platform-before.tfstate`,
+with the hash/lineage/serial handoff ledger in `.handoff/handoff.json`. Both are
+private and ignored. The snapshot formerly under
+`../infra-local/.generated/consolidation-20261108/terraform.tfstate` is no longer
+available at that path. The retained snapshot is a backup, not alternate active
+state. Rollback must use the latest authoritative state, with a coordinated freeze and only one
 active location; never restore an older snapshot over newer state.
 
 The existing ignored kind configuration and database `.env` were copied with
 permissions and contents preserved. External secrets paths are unchanged.
 No real local platform `.tfvars` or current AWS `config/operator.tfvars` existed
 to copy. Prepare AWS operator settings from their example before future AWS work;
-legacy monolithic variables and saved plans were retained in the original checkout.
+legacy monolithic variables and saved plans were left in the original checkout
+and are no longer available there. Git history cannot recover ignored settings;
+use separately preserved private copies where needed and generate fresh plans.
 No `.terraform` directory, saved plan, generated archive or old bootstrap state
 was imported into the active roots. Initialize clean provider directories with
 the committed locks before future planning.
 
-Compose still targets the same project/volume and passwords. Its running
-container can retain its original init-script bind path; keep the old checkout
-available. No database restart/recreation was needed or performed. See
+The consolidated Compose configuration targets the same project/volume and
+external password paths. An existing container may still reference the removed
+checkout's init-script path. Before a future start or recreation, verify its
+mounts, the current init script, existing volume and password files using
 [database checkout changes](../environments/local/docs/database.md#checkout-consolidation).
 
 ## AWS state and interrupted teardown
@@ -65,12 +73,15 @@ backend was queried or initialized. Missing AWS infrastructure/backends stay
 absent; local bootstrap snapshots do not prove a live backend exists. Live AWS
 planning requires a separately scoped AWS task and identity/backend verification.
 
-Old `.teardown` records remain under `../infra-aws/.teardown`. Resume using the
-original checkout and the tool revision that created the record, with the original
-scope. Some historical records predate the staged tool: do not assume today's
-source tool supports every old record. The preserved Git history provides prior
-tool revisions. Keep snapshots unchanged and do not run a new teardown merely
-to validate consolidation. New runs use record version 3 and preserve the new
+Old `.teardown` records were left under `../infra-aws/.teardown`; that path is
+now unavailable. Resuming an old run requires a separately preserved private run
+directory and the tool revision that created it, with its original layout and
+scope. Git history can recover earlier tool revisions, but not ignored run
+records, private snapshots or credentials. Without those artifacts, the old
+resume procedure is unavailable; assess current AWS resources and state under
+a separately authorized AWS task before choosing recovery steps. Keep recovered
+snapshots unchanged and do not run a new teardown merely to validate recovery.
+New runs use record version 3 and preserve the new
 repository-relative assets, common values, backends and operator-variable paths.
 See [teardown recovery](../environments/aws/dev/docs/teardown.md#pre-consolidation-records).
 

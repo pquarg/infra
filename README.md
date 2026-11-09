@@ -45,7 +45,8 @@ repository creates no placeholder staging, production or Azure targets.
 
 Read the [environment contract](docs/environments.md) before operational changes
 and the [consolidation handoff](docs/consolidation.md) before using existing state
-or resuming old teardown records. Original infrastructure checkouts remain private
-recovery references. The repository remote is
+or resuming old teardown records. The original infrastructure checkouts and
+workspace `.repo-backups/` are no longer present; legacy recovery needs separately
+preserved private artifacts. The repository remote is
 [`pquarg/infra`](https://github.com/pquarg/infra). Retiring the old remotes is a
 separate step; Argo CD still watches the unchanged GitOps remote.
