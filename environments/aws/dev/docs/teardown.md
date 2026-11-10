@@ -4,7 +4,7 @@ Destructive work requires a separately chosen scope. No teardown is a validation
 check. The staged command intentionally deletes runtime resources, **all this
 lab database's snapshots/backups**, and CloudFront access logs. It retains the
 state backend by default. For data/log retention use the
-[manual deployment runbook](../../../../../gitops/docs/aws/teardown.md) instead.
+[manual deployment runbook](https://github.com/pquarg/gitops/blob/main/docs/aws/teardown.md) instead.
 
 ```sh
 # Read-only preflight/inventory; writes private local artifacts only.
@@ -56,25 +56,14 @@ Unexpected references/finalizers or AWS constraints stop the run for inspection;
 they are not bypassed by broad deletion. S3 locks protect operations, and a local
 command lock prevents two invocations in this checkout. Freeze other applies.
 
-## Pre-consolidation records
-
-The original `infra-aws` checkout is no longer present, so its old `.teardown`
-records are unavailable at that location. To resume an old run, first recover a
-separately preserved private run directory and the matching tool revision with
-the original layout and scope. The imported Git history contains earlier tool
-revisions, but not ignored progress records, private state/configuration copies
-or credentials. Without those artifacts, an old run cannot be resumed from Git
-alone; inspect current AWS resources and state under a separately authorized
-AWS task before choosing recovery steps.
-
-The consolidated tool rejects older record versions because private paths have
-changed. Keep recovered snapshots unchanged rather than copying them into the
-new record layout. See [the consolidation handoff](../../../../docs/consolidation.md).
-
 ## Failure and resume
 
 Progress records require version `3`, the expected state keys and the original
 backend scope. Records that fail these checks are rejected before commands run.
+Keep the private run directory and the tool revision that created it together.
+Git history does not contain ignored run records, state copies or credentials.
+If those artifacts are missing or incompatible, inspect current resources and
+state before choosing recovery steps; do not edit progress files to bypass checks.
 
 Fix the blocker and use the printed resume command with the original scope:
 
@@ -94,24 +83,13 @@ restore remote state or a deleted database.
 ## Rebuild after deleting the backend
 
 If the backend survived, initialize each root against its existing key and follow
-[the deployment walkthrough](../../../../../gitops/docs/aws/deploy-from-scratch.md). Do not
+[the deployment walkthrough](https://github.com/pquarg/gitops/blob/main/docs/aws/deploy-from-scratch.md). Do not
 use consumed plans or invent fresh local state over an existing bucket/state.
-If the backend was explicitly removed, create a new private local bootstrap copy:
-
-1. Verify the expected bucket is absent in the selected account, and inspect
-   private removal records. An access error does not mean it is absent.
-2. Copy `../../../bootstrap/aws/*.tf` and its provider lock to a private directory outside Git,
-   excluding `backend.tf`, old `.terraform` and old state. Keep checked-in safe
-   defaults (`prevent_destroy=true`, `force_destroy=false`).
-3. In that directory run `terraform init -lockfile=readonly`, review `terraform
-   plan -out=bootstrap.tfplan`, then apply the reviewed plan. This creates only
-   the protected bucket and its settings.
-4. Add the checked-in `../../../bootstrap/aws/backend.tf` to that private copy and run
-   `terraform init -migrate-state`. Review the migration prompt, verify the
-   `bootstrap/terraform.tfstate` key, then initialize the normal bootstrap/root
-   stage directories. Keep the private local backup.
-5. Review fresh full stage plans in lifecycle order. Restoring a database is a
-   separate choice; creating a new instance does not recover deleted data.
+If the backend was explicitly removed, verify the expected bucket is absent in
+the selected account and inspect the private removal records. An access error
+does not mean absence. Follow [state backend setup](../../../../docs/state.md#create-the-aws-state-backend)
+to create it, then review fresh full stage plans in lifecycle order. Restoring a
+database is a separate choice; creating a new instance does not recover deleted data.
 
 ## Validation
 

@@ -1,6 +1,6 @@
 # AWS infrastructure
 
-This environment in the consolidated `infra` repository owns the AWS foundation, shared Kubernetes platform
+This environment owns the AWS foundation, shared Kubernetes platform
 and CloudFront edge for `gitops`. Account `245361883993`, profile `aws-project`,
 Region `eu-north-1`. CloudFront is global; its log delivery uses `us-east-1`.
 These files describe desired configuration, not current live health.
@@ -16,29 +16,24 @@ Ingress; Terraform never owns that ALB or its targets.
 | Platform | `platform/`: Argo CD and load balancer controller Helm releases | `dev/platform/terraform.tfstate` |
 | Edge | `edge/`: ALB lookup, CloudFront, functions and access logs | `dev/edge/terraform.tfstate` |
 
-All keys use the existing protected/versioned S3 bucket
+All keys use the protected/versioned S3 bucket
 `deployment-project-tfstate-245361883993-eu-north-1`, encryption and native locking.
 Provider locks and module/chart/image pins are committed. Run Terraform from
 the owning stage directory; the repository root contains no Terraform configuration.
 
 Run commands here from `infra/environments/aws/dev` unless stated otherwise.
 The public repository interface requires `--environment aws/dev`; the helpers
-here are scoped to this existing target.
+here are scoped to this target.
 
 ## Setup and changes
 
-The administrator allowlist variable is now `admin_ipv4_cidrs`: rename the key
-in any existing ignored `config/operator.tfvars` without changing its addresses.
-The account output is now `aws_account_id`. Existing app deployments also need
-the [app/ALB rename handoff](../../../../gitops/docs/app-rename.md) before using
-the new edge lookup for `dev-demo-api`. Terraform resource addresses and physical
-security-group/CloudFront names remain stable; the `myfastapiapp_*` outputs remain
-valid for existing consumers.
-
-Application deployments use [the GitOps repository](../../../../gitops/README.md).
+Application deployments use [the GitOps repository](https://github.com/pquarg/gitops/blob/main/README.md).
 
 Install Terraform `1.17.x` (CI `1.17.1`), AWS CLI v2, kubectl, Python 3 and Node.js
-for tests. Use the existing AWS profile and authenticate it separately.
+for tests. Configure and authenticate the `aws-project` profile for the account
+and Region above. Verify the identity before provisioning. Create the protected
+state bucket using [backend setup](../../../docs/state.md#create-the-aws-state-backend)
+before planning the foundation stage.
 Prepare one ignored operator configuration:
 
 ```sh
@@ -46,7 +41,7 @@ cp -n config/operator.tfvars.example config/operator.tfvars
 chmod 600 config/operator.tfvars
 ```
 
-Replace its example with your approved public IPv4 `/32` addresses. Foundation
+Set `admin_ipv4_cidrs` to your approved public IPv4 `/32` addresses. Foundation
 and edge read this same file; updating it requires reviewing/applying **both**
 stages to keep API and CloudFront restrictions identical. No passwords belong
 in it. Keep real variables, state, plans and credentials out of Git.
@@ -76,7 +71,7 @@ digest, sharing EKS's configured `1.36` minor version. Controller upgrades use a
 reviewed platform plan/apply, independently of app GitOps. See the
 [local version upgrade notes](../../local/docs/terraform.md#shared-versions-and-upgrades).
 
-Follow [gitops setup](../../../../gitops/docs/aws/setup.md) to provision credentials,
+Follow [gitops setup](https://github.com/pquarg/gitops/blob/main/docs/aws/setup.md) to provision credentials,
 register apps and manually sync them. Wait for an Active ALB with healthy targets
 before edge (the checker refuses a missing or unhealthy origin):
 
@@ -136,5 +131,5 @@ runs, then platform, then foundation. Backend deletion is a separately selected
 last scope.
 
 Read [architecture](docs/architecture.md),
-[full deployment walkthrough](../../../../gitops/docs/aws/deploy-from-scratch.md) and
-[public access verification](../../../../gitops/docs/aws/public-access.md) before live work.
+[full deployment walkthrough](https://github.com/pquarg/gitops/blob/main/docs/aws/deploy-from-scratch.md) and
+[public access verification](https://github.com/pquarg/gitops/blob/main/docs/aws/public-access.md) before live work.

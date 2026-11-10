@@ -1,15 +1,24 @@
 # Infrastructure
 
-One repository owns the local kind platform and the existing AWS development
-platform. Each target has independent Terraform roots, state, credentials and
-plans. Application source remains in `../apps/demo-api`; Argo CD reads
-application deployments from `../gitops`, independently of this repository.
+This repository provides Terraform and operational tooling for a local kind
+platform and an AWS development platform. Each target has independent Terraform
+roots, state, credentials and plans. Application source lives in the
+[demo-api repository](https://github.com/pquarg/myfastapiapp/blob/main/README.md); Argo CD reads application
+deployments from the independent [GitOps repository](https://github.com/pquarg/gitops/blob/main/README.md).
+Use the [workspace layout](https://github.com/pquarg/gitops/blob/main/README.md#get-the-companion-repositories)
+when following setup commands across repositories.
 
 | Target | Setup | Terraform roots |
 | --- | --- | --- |
 | `local` | [kind, controllers and Compose PostgreSQL](environments/local/README.md) | `environments/local/platform` (local state) |
-| `aws/dev` | [EKS, RDS, controllers and CloudFront](environments/aws/dev/README.md) | `environments/aws/dev/{foundation,platform,edge}` (existing S3 keys) |
-| AWS backend | [separate bootstrap/recovery](environments/aws/dev/docs/teardown.md#rebuild-after-deleting-the-backend) | `bootstrap/aws` |
+| `aws/dev` | [EKS, RDS, controllers and CloudFront](environments/aws/dev/README.md) | `environments/aws/dev/{foundation,platform,edge}` (separate S3 keys) |
+| AWS backend | [separate bootstrap/recovery](docs/state.md#create-the-aws-state-backend) | `bootstrap/aws` |
+
+Start with the selected environment's setup guide. Local setup provisions the
+database, kind and controllers before handing application deployment to GitOps.
+AWS setup proceeds through the state backend, foundation, platform, app sync and
+edge. The AWS target is configured for a specific account, profile and region;
+review its identity checks before provisioning.
 
 Run these commands from `infra`:
 
@@ -44,9 +53,6 @@ versions. Add reusable modules when another environment needs them; this
 repository creates no placeholder staging, production or Azure targets.
 
 Read the [environment contract](docs/environments.md) before operational changes
-and the [consolidation handoff](docs/consolidation.md) before using existing state
-or resuming old teardown records. The original infrastructure checkouts and
-workspace `.repo-backups/` are no longer present; legacy recovery needs separately
-preserved private artifacts. The repository remote is
-[`pquarg/infra`](https://github.com/pquarg/infra). Retiring the old remotes is a
-separate step; Argo CD still watches the unchanged GitOps remote.
+and [state and recovery](docs/state.md) before backend setup or state recovery.
+Private credentials, state and backups are separate from Git source history.
+The repository remote is [`pquarg/infra`](https://github.com/pquarg/infra).

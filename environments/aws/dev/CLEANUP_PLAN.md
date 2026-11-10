@@ -2,7 +2,7 @@
 
 This guide summarizes removal scopes for the current foundation/platform/edge
 layout. Use [teardown/rebuild](docs/teardown.md) for the automated command and the
-[manual retention runbook](../../../../gitops/docs/aws/teardown.md) for reviewed stage plans.
+[manual retention runbook](https://github.com/pquarg/gitops/blob/main/docs/aws/teardown.md) for reviewed stage plans.
 
 This guide describes how to remove resources defined by this deployment. It
 does not record deployment status. Before starting, establish which resources
@@ -25,7 +25,7 @@ local bootstrap state. It supports read-only AWS preflight with `--check`,
 unattended confirmation with `--yes`, and recovery of an interrupted run with `--resume DIRECTORY`. See its
 runbook for prerequisites, scope, and recovery; it is not a project-wide sweeper.
 
-Use the [manual teardown walkthrough](../../../../gitops/docs/aws/teardown.md) when you
+Use the [manual teardown walkthrough](https://github.com/pquarg/gitops/blob/main/docs/aws/teardown.md) when you
 want database/log retention choices and to keep the state backend by default.
 Its keep-logs branch retains the bucket outside edge state and documents
 importing it on a later rebuild. The order below describes this manual procedure.
@@ -76,7 +76,7 @@ looks up the controller-owned ALB but does not manage its lifecycle.
 ## State and rebuilding
 
 If the backend is retained, initialize against the existing state bucket and
-follow the [staged deployment guide](../../../../gitops/docs/aws/deploy-from-scratch.md).
+follow the [staged deployment guide](https://github.com/pquarg/gitops/blob/main/docs/aws/deploy-from-scratch.md).
 Reconcile any deliberately retained resources with the configuration before
 planning their recreation.
 

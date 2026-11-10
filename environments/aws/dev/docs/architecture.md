@@ -21,17 +21,18 @@ Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → p
 | Credential provisioning | App database login, database Secret, GHCR Secret and Argo CD Git credential stay outside Terraform/app Git |
 
 Foundation has public NAT subnets, private worker/ALB subnets and isolated database
-subnets in two Stockholm AZs. Workers remain two `t3.small` nodes; EKS uses Pod
-Identity, not IRSA. Public API access is limited by `admin_ipv4_cidrs`. RDS remains
+subnets in two Stockholm AZs. Workers are two `t3.small` nodes; the load balancer
+controller uses EKS Pod Identity. Public API access is limited by
+`admin_ipv4_cidrs`. RDS is
 single-AZ PostgreSQL 17 on `db.t4g.micro`, with encrypted storage, worker-only
 5432 access, TLS required, managed administrator password, one-day backups,
 deletion protection, required final snapshot and retained automated backups.
 
-CloudFront retains HTTPS-only viewers, disabled API caching, host forwarding,
+CloudFront uses HTTPS-only viewers, disabled API caching, host forwarding,
 response security headers, redirect handling and the same operator IPv4 allowlist.
 The private origin leg uses HTTP. Its frontend group admits HTTP only from the
 CloudFront origin-facing prefix list and sends app/check traffic to port 8000.
-S3 access logs remain private/encrypted with 14-day expiry and omit query strings,
+S3 access logs are private/encrypted with 14-day expiry and omit query strings,
 cookies, authorization, referer and viewer IPs. Global-service log delivery stays
 explicitly in `us-east-1`; regional resources stay `eu-north-1`. EKS logs retain
 seven-day expiry. This lab keeps one app replica, a single-AZ DB and shared NAT;
@@ -39,9 +40,9 @@ review availability, security and version changes through the owning stage plan.
 
 ## Stage interfaces and state
 
-All state uses the same existing encrypted/locked/versioned bucket, with keys:
+All state uses the same encrypted/locked/versioned bucket, with keys:
 
-- `bootstrap/terraform.tfstate`: backend bootstrap, unchanged.
+- `bootstrap/terraform.tfstate`: backend bootstrap.
 - `dev/terraform.tfstate`: foundation.
 - `dev/platform/terraform.tfstate`: the two Helm releases.
 - `dev/edge/terraform.tfstate`: CloudFront and logs.
@@ -57,7 +58,7 @@ are never outputs. Foundation's `database` output contains connection metadata
 and a Secrets Manager ARN, not its password. Platform chart pins and values live
 in [`argocd/`](../argocd) and
 [`load-balancer-controller/`](../load-balancer-controller). The controller policy
-remains pinned in [`policies/`](../policies); functions/tests remain alongside the stage roots in `environments/aws/dev`.
+is pinned in [`policies/`](../policies); functions/tests live alongside the stage roots in `environments/aws/dev`.
 
 ## Operating sequence
 

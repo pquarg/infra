@@ -70,7 +70,7 @@ use `host.docker.internal:5433`. This uses Docker Desktop's
 [documented host connection](https://docs.docker.com/desktop/features/networking/networking-how-tos/).
 No database port is deliberately bound to the laptop's LAN interfaces. Verify the
 actual path from a kind Pod before deploying; Docker Desktop, VPN and firewall
-settings can affect it. Use the [app setup](../../../../gitops/apps/demo-api/overlays/local/README.md#provision-credentials)
+settings can affect it. Use the [app setup](https://github.com/pquarg/gitops/blob/main/apps/demo-api/overlays/local/README.md#provision-credentials)
 to provision its connection Secret and run the Kubernetes connectivity probe.
 That probe must pass before registering the app with Argo CD. A healthy
 Compose container checks PostgreSQL locally; the probe checks the actual
@@ -79,26 +79,14 @@ connection from inside kind.
 Local connections use `sslmode=disable`; AWS keeps `verify-full` and its RDS CA
 mounts. Local does not emulate RDS TLS or managed backups.
 
-## Checkout consolidation
-
-The Compose project, external volume and external password paths remain the same.
-The original `infra-local/` checkout is no longer present. A container created
-before consolidation may still reference its `database/init-app.sh` bind path;
-its current mounts and health have not been verified by this documentation update.
-Before a future start or recreation, inspect that container's mounts and confirm
-the current `database/init-app.sh`, existing external volume and existing password
-files are available. Back up and verify the database before planned disruption.
-The helper in this checkout addresses the same Compose project; an explicitly
-chosen `up` may recreate the container with the current init-script path while
-retaining the external volume and passwords. Keep the existing credentials and
-volume; restarting a populated volume does not rerun initialization. No restart
-is required just to update documentation. See [the handoff](../../../docs/consolidation.md).
-
-The `$HOME/.local/share/infra-local/` paths in these runbooks are external
-credential and backup directories, separate from the removed source checkout.
-Keep them in place; their name does not make them obsolete repository backups.
-
 ## Lifecycle and credentials
+
+Compose mounts `database/init-app.sh` and the private password files from their
+configured paths. Before moving a checkout or recreating the database container,
+verify those mount sources and the external volume, and take a verified backup.
+Keep the password files under `$HOME/.local/share/infra-local/` available across
+checkout changes. A populated database retains its roles and passwords;
+restarting it does not rerun initialization.
 
 ```sh
 ./scripts/local-database.sh stop

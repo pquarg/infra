@@ -1,7 +1,7 @@
 # Local infrastructure
 
-This environment in the consolidated `infra` repository provisions the local platform used by
-[`gitops`](../../../gitops/README.md): a kind cluster, Argo CD and shared Traefik
+This environment provisions the local platform used by
+[`gitops`](https://github.com/pquarg/gitops/blob/main/README.md): a kind cluster, Argo CD and shared Traefik
 installed through Terraform Helm releases, and a separate Compose PostgreSQL
 database. Application source and image builds live in `../../../apps/`; application
 manifests, connection Secrets and schema migration Jobs live in `gitops`.
@@ -121,10 +121,6 @@ credentials are separate.
 
 ## 3. Hand over to gitops
 
-Existing `myfastapiapp` installations need the
-[app rename handoff](../../../gitops/docs/app-rename.md) before GitOps publication.
-The platform and existing Compose database/storage identities remain unchanged.
-
 The platform provides:
 
 | Setting | Value |
@@ -136,7 +132,7 @@ The platform provides:
 | Deployment database | Compose PostgreSQL at `host.docker.internal:5433` from kind Pods |
 | Database persistence | External Docker volume `deployment-project-myfastapiapp-postgres` |
 
-Follow [local deployment setup](../../../gitops/docs/local/setup.md) to provision the
+Follow [local deployment setup](https://github.com/pquarg/gitops/blob/main/docs/local/setup.md) to provision the
 app namespace, connection and registry Secrets, selected image and Git access.
 Complete its app preparation before running the GitOps bootstrap. For
 `demo-api`, all of these must be ready:
@@ -148,7 +144,7 @@ Complete its app preparation before running the GitOps bootstrap. For
 - The connection uses `host.docker.internal:5433`, and the Pod database probe
   reports `Database connectivity, app privileges and transactional DDL passed.`
 
-The [GitOps setup guide](../../../gitops/docs/local/setup.md#4-validate-publish-and-register-apps)
+The [GitOps setup guide](https://github.com/pquarg/gitops/blob/main/docs/local/setup.md#4-validate-publish-and-register-apps)
 contains the validation, publication and registration commands to run next.
 
 The `bootstrap` Application discovers `apps/*/overlays/local` through its
@@ -156,7 +152,7 @@ ApplicationSet. App sync is automatic, including schema migrations, so the
 database and credentials must be ready first. Bootstrap **Synced** confirms
 registration; check each app's **Synced / Healthy** status and verification
 procedure before claiming deployment success.
-If sync fails, use the app's [first-sync troubleshooting](../../../gitops/apps/demo-api/overlays/local/README.md#troubleshoot-the-first-sync).
+If sync fails, use the app's [first-sync troubleshooting](https://github.com/pquarg/gitops/blob/main/apps/demo-api/overlays/local/README.md#troubleshoot-the-first-sync).
 
 ## Validate and update
 
