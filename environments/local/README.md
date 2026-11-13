@@ -95,15 +95,19 @@ The scripts and provider explicitly select `kind-<cluster>` from
 another kubeconfig. Bootstrap's arguments override ignored Terraform variables.
 For inspection without applying, use the [manual plan commands](docs/terraform.md#inspect-and-apply-manually).
 
-To open the Argo CD UI, leave this running in another terminal:
+### Open the Argo CD UI
+
+Run this in another terminal and leave it open while using the UI:
 
 ```sh
 kubectl --context kind-deployment -n argocd \
   port-forward service/argocd-server 8080:443
 ```
 
-Open https://localhost:8080 and sign in as `admin`. Retrieve the initial password
-on a fresh installation:
+Open https://localhost:8080. With the default self-signed certificate, accept the
+local certificate warning and sign in as `admin`. To remove the warning, follow
+the [optional trusted-certificate setup](#optional-trust-the-local-argo-cd-certificate).
+To retrieve the initial password on a fresh installation:
 
 ```sh
 kubectl --context kind-deployment -n argocd \
@@ -118,6 +122,58 @@ by the `default` project. Keep the credential outside Git. If using another
 remote, update all `repoURL` values in `gitops/bootstrap/local.yaml` and
 `gitops/argocd/local/apps.yaml`. Git authentication and app image-pull
 credentials are separate.
+
+### Optional: trust the local Argo CD certificate
+
+For warning-free access at https://localhost:8080 on macOS, use
+[`mkcert`](https://github.com/FiloSottile/mkcert) to install a local certificate
+authority in your computer's trust store and issue a certificate for localhost.
+The port-forward command above stays the same.
+
+Install mkcert with Homebrew. If you use Firefox, also install `nss` before
+running `mkcert -install`:
+
+```sh
+brew install mkcert
+brew install nss # Firefox only
+mkcert -install
+```
+
+macOS may request your password when installing the certificate authority.
+Generate the certificate and private key outside the repositories:
+
+```sh
+mkdir -p "$HOME/.config/deployment-project/certs"
+chmod 700 "$HOME/.config/deployment-project/certs"
+
+mkcert \
+  -cert-file "$HOME/.config/deployment-project/certs/argocd.crt" \
+  -key-file "$HOME/.config/deployment-project/certs/argocd.key" \
+  localhost 127.0.0.1 ::1
+```
+
+Create or update the local cluster's dedicated TLS Secret:
+
+```sh
+kubectl --context kind-deployment -n argocd \
+  create secret tls argocd-server-tls \
+  --cert="$HOME/.config/deployment-project/certs/argocd.crt" \
+  --key="$HOME/.config/deployment-project/certs/argocd.key" \
+  --dry-run=client -o yaml |
+  kubectl --context kind-deployment -n argocd apply -f -
+```
+
+Argo CD [automatically loads this Secret](https://argo-cd.readthedocs.io/en/stable/operator-manual/tls/#tls-certificates-used-by-argocd-server)
+without a server restart. With the port-forward running, fully quit and reopen
+your browser, then visit https://localhost:8080. Confirm the browser reports a
+valid certificate without a warning before signing in.
+
+Keep private keys and filled Secret manifests out of Git. Upload only the
+localhost certificate/key pair to the cluster; keep mkcert's `rootCA-key.pem`
+private on your computer. Renew the certificate before it expires by rerunning
+the generation and Secret commands. After rebuilding the cluster, recreate the
+Secret from the existing certificate/key pair if still valid. Each other computer
+needs its own trust setup; this only configures the local kind environment.
 
 ## 3. Hand over to gitops
 
