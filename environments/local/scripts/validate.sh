@@ -12,6 +12,7 @@ done
 bash tests/bootstrap.sh
 bash tests/teardown.sh
 bash tests/database.sh
+python3 -m unittest discover -s tests -p "test_*.py"
 terraform fmt -check -recursive platform
 for script in scripts/*.sh tests/*.sh database/*.sh; do
   bash -n "$script"

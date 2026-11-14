@@ -28,6 +28,9 @@ Terraform reads this checkout directly and owns the shared controllers. Argo CD
 reads published GitOps configuration and owns app resources. Compose owns the
 database independently of kind and Terraform. Each resource has one owner.
 
+See also the [dedicated job tracker database](docs/job-tracker.md) for additive
+provisioning and independent recovery on an already populated server.
+
 ## Prerequisites
 
 Install and start Docker Desktop. Install kind `v0.33.0`, kubectl `v1.36.1` and

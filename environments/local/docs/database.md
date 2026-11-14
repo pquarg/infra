@@ -180,3 +180,9 @@ the same PostgreSQL minor version configured in AWS, using the
 upgrades. Never point a different PostgreSQL major at existing files; use an
 explicit dump/restore or supported upgrade procedure. Docker volumes do not
 replace backups.
+
+## Additional application databases
+
+[Job tracker](job-tracker.md) uses a dedicated database/login on this server,
+with additive provisioning and independent backups. Its helper does not change
+`local-database.sh` behaviour or demo credentials/storage.
