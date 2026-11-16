@@ -1,0 +1,2 @@
+# Preserve the checksum of the unmodified upstream Gateway API bundle.
+shared/gateway-api-crds/files/standard-install.yaml whitespace=-blank-at-eol

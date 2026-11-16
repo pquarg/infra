@@ -39,7 +39,7 @@ The order is enforced across state boundaries:
    allow only the existing deletion flags; no drift, creates or replacements.
 3. Destroy edge and verify CloudFront distribution/VPC origin removal.
 4. Verify the load balancer controller is running. Pause both Argo CD reconcilers,
-   wait for their Pods to stop, delete Ingresses/LoadBalancer Services, wait for
+   wait for their Pods to stop, delete Gateways/legacy Ingresses/LoadBalancer Services, wait for
    ALBs/targets to disappear, then handle only known controller backend groups.
 5. Destroy platform's Helm releases, then foundation. Each destroy plan rejects
    creates/replacements/updates and resources outside its stage.
@@ -101,3 +101,7 @@ Offline tests cover plan scopes, phase ordering, failure/resume, missing stages,
 state/backend selection, controller availability, invalid record rejection and
 local bootstrap handoff. Backend-disabled configuration checks cannot prove live
 removal/readiness. Never run a destroy as a validation check.
+
+See [Gateway API lifecycle](../../../../shared/gateway-api.md) for the Standard `v1.6.2` pin,
+controller CRD ownership, readiness and deletion ordering. AWS changes are
+configuration preparation for its first deployment; no AWS runtime was verified.

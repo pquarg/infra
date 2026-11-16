@@ -97,3 +97,9 @@ full plan through `scripts/plan.sh` with an explicit environment, stage and
 Kubernetes context where required. Keep saved plans private and generate new
 ones after state or configuration changes. Check the affected controllers,
 workloads and data separately before declaring recovery complete.
+
+Gateway API recovery also requires the Terraform-owned Standard CRD release,
+GatewayClass and shared local Gateway. Recover its Helm binding before applying
+if the cluster survives; after an authorized rebuild the full platform apply
+installs CRDs before Traefik. Restore app HTTPRoutes through GitOps after Secrets
+and database probes are ready. Never delete CRDs as a routing rollback.

@@ -17,7 +17,7 @@ infra/environments/local/
   database/                    # Separate deployment PostgreSQL Compose service
   argocd/                      # Pinned Helm chart and values
   traefik/                     # Pinned Helm chart and values
-  platform/                    # One local state for both controller releases
+  platform/                    # One local state for controllers and Standard CRDs
   scripts/                     # Create, bootstrap, readiness and validation
   docs/database.md             # Database setup, credentials, backup and restore
   docs/terraform.md            # Platform plans, state recovery and upgrades
@@ -88,8 +88,8 @@ kubeconfig for the standard target.
 ```
 
 Bootstrap initializes `platform`, asks you to review and approve one
-apply for both pinned Helm releases, then verifies Argo CD CRDs/controllers,
-Traefik, its IngressClass/NodePort and the kind host port mapping. It registers
+apply for the three pinned Helm releases, then verifies Argo CD CRDs/controllers,
+Traefik, its GatewayClass/shared Gateway/NodePort and the kind host port mapping. It registers
 no app. It refuses existing controllers or Helm records absent from its state;
 [state recovery](docs/terraform.md#recover-platform-state) covers lost bindings.
 
@@ -186,7 +186,7 @@ The platform provides:
 | --- | --- |
 | Default context | `kind-deployment` |
 | Argo CD namespace | `argocd`, with Application/ApplicationSet CRDs ready |
-| Shared ingress | Namespace `traefik`, IngressClass `traefik` |
+| Shared routing | GatewayClass `traefik`, Gateway `traefik/traefik-gateway` |
 | HTTP mapping | `127.0.0.1:80` → node `30080` → Traefik |
 | Deployment database | Compose PostgreSQL at `host.docker.internal:5433` from kind Pods |
 | Database persistence | External Docker volume `deployment-project-myfastapiapp-postgres` |
@@ -257,7 +257,12 @@ Database backup, restore and deliberate reset are [separate procedures](docs/dat
 Platform state lives at `platform/terraform.tfstate` and may contain
 credentials. Keep it and its backups private. Use separate state/checkouts for
 different cluster names. Do not use `terraform destroy` for cluster replacement:
-kind owns the cluster and both Helm releases have `prevent_destroy`.
+kind owns the cluster and all local Helm releases have `prevent_destroy`.
 
 References: [kind configuration](https://kind.sigs.k8s.io/docs/user/configuration/),
 [Argo CD declarative setup](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/).
+
+Gateway API adoption, CRD ownership and the reviewed cutover are documented in
+[Gateway API lifecycle](../../shared/gateway-api.md). Ingress remains enabled
+until the published demo-api, Mailpit and job-tracker HTTPRoutes pass runtime
+verification. A healthy controller alone does not prove route attachment.

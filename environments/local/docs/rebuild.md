@@ -77,3 +77,9 @@ On successful deletion, follow the rebuild steps above. Saved Secrets contain
 credentials; use them privately to recreate required Secrets. Keep original
 password files, configuration, state and backup archives. A Git revert cannot
 restore deleted Kubernetes objects or Secrets.
+
+Gateway API recovery also requires the Terraform-owned Standard CRD release,
+GatewayClass and shared local Gateway. Recover its Helm binding before applying
+if the cluster survives; after an authorized rebuild the full platform apply
+installs CRDs before Traefik. Restore app HTTPRoutes through GitOps after Secrets
+and database probes are ready. Never delete CRDs as a routing rollback.

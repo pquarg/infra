@@ -250,7 +250,7 @@ class WorkflowTests(unittest.TestCase):
             if "pods" in args:
                 return '{"items": []}'
             if "ingresses,services" in args:
-                return json.dumps(ingress)
+                return json.dumps({"items": []} if any("delete" in c for c in calls) else ingress)
             return ""
         self.job.kube = kube
         self.job.no_load_balancers = Mock(return_value=True)
@@ -291,6 +291,43 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(teardown.Failure, "controller unhealthy"):
             self.job.remove_ingresses()
         self.assertFalse(any("delete" in c for c in calls))
+
+    def test_gateway_inventory_distinguishes_absence_from_api_failure(self):
+        self.job.kube = Mock(side_effect=['{"items": []}', ''])
+        self.assertEqual(self.job.load_balancer_requests(), [])
+        self.job.kube = Mock(side_effect=['{"items": []}', teardown.Failure("forbidden")])
+        with self.assertRaisesRegex(teardown.Failure, "forbidden"):
+            self.job.load_balancer_requests()
+        gateway = {"kind": "Gateway", "metadata": {"name": "app", "namespace": "app"}}
+        self.job.kube = Mock(side_effect=['{"items": []}', 'crd/gateways', json.dumps({"items": [gateway]})])
+        self.assertEqual(self.job.load_balancer_requests(), [gateway])
+
+    def test_gateway_finalizers_block_platform_removal(self):
+        self.job.record["inventory"] = {"clusters": [teardown.CLUSTER]}
+        controller = {"kind": "Deployment", "metadata": {"name": "argocd-application-controller"},
+                      "spec": {"selector": {"matchLabels": {"app": "argocd"}}}}
+        gateway = {"kind": "Gateway", "metadata": {"name": "app", "namespace": "app"}}
+        self.job.load_balancer_requests = Mock(return_value=[gateway])
+        self.job.kube = Mock(side_effect=lambda *a: json.dumps({"items": [controller] if "deployments,statefulsets" in a else []}))
+        self.job.no_load_balancers = Mock(return_value=True)
+        self.job.remove_backend_groups = Mock()
+        with self.assertRaisesRegex(teardown.Failure, "finalizers remain"):
+            self.job.remove_ingresses()
+        self.assertTrue(any("Gateway" in c.args and "--wait=true" in c.args for c in self.job.kube.call_args_list))
+        self.job.remove_backend_groups.assert_not_called()
+
+    def test_deleted_gateway_does_not_allow_cleanup_to_pass_with_remaining_alb(self):
+        self.job.record["inventory"] = {"clusters": [teardown.CLUSTER]}
+        controller = {"kind": "Deployment", "metadata": {"name": "argocd-application-controller"},
+                      "spec": {"selector": {"matchLabels": {"app": "argocd"}}}}
+        gateway = {"kind": "Gateway", "metadata": {"name": "app", "namespace": "app"}}
+        self.job.load_balancer_requests = Mock(side_effect=[[gateway], []])
+        self.job.kube = Mock(side_effect=lambda *a: json.dumps({"items": [controller] if "deployments,statefulsets" in a else []}))
+        self.job.wait = Mock(side_effect=[None, teardown.Failure("ALB remains")])
+        self.job.remove_backend_groups = Mock()
+        with self.assertRaisesRegex(teardown.Failure, "ALB remains"):
+            self.job.remove_ingresses()
+        self.job.remove_backend_groups.assert_not_called()
 
     def test_existing_snapshot_deletion_can_be_resumed(self):
         self.job.aws = Mock(side_effect=[None, {"DBSnapshots": [{

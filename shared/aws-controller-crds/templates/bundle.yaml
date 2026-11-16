@@ -1,0 +1,4 @@
+{{ .Files.Get "files/crds.yaml" | replace "metadata:\n  annotations:\n" "metadata:\n  annotations:\n    helm.sh/resource-policy: keep\n" }}
+---
+{{ .Files.Get "files/gateway-crds.yaml" | replace "metadata:\n  annotations:\n" "metadata:\n  annotations:\n    helm.sh/resource-policy: keep\n" }}
+---

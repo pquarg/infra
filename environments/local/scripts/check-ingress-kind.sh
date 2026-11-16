@@ -50,10 +50,11 @@ printf 'Waiting for the shared Traefik Helm controller\n'
 "${kube[@]}" --namespace=traefik \
   rollout status deployment/traefik --timeout=180s
 
-controller="$("${kube[@]}" get ingressclass traefik -o jsonpath='{.spec.controller}')"
 node_port="$("${kube[@]}" -n traefik get service traefik -o jsonpath='{.spec.ports[?(@.name=="web")].nodePort}')"
-if [[ "$controller" != traefik.io/ingress-controller || "$node_port" != 30080 ]]; then
-  printf 'Error: expected Traefik ingress class and HTTP NodePort 30080.\n' >&2
+if [[ "$node_port" != 30080 ]]; then
+  printf 'Error: expected Traefik HTTP NodePort 30080.\n' >&2
   exit 1
 fi
-printf 'Shared ingress is ready. Each app supplies its own hostname and Ingress through Git.\n'
+repository="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)"
+python3 "$repository/scripts/check-gateway.py" --environment local --context "$context" --kubeconfig "$kubeconfig"
+printf 'Shared Gateway is ready. Apps supply hostname-specific HTTPRoutes through Git.\n'

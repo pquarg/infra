@@ -7,13 +7,13 @@ These files describe desired configuration, not current live health.
 
 The request path is client → CloudFront → private controller-owned ALB → FastAPI
 on EKS → RDS PostgreSQL. The load balancer controller creates the ALB from an app
-Ingress; Terraform never owns that ALB or its targets.
+Gateway and HTTPRoute; Terraform never owns that ALB or its targets.
 
 | Stage | Configuration | State key |
 | --- | --- | --- |
 | Backend bootstrap | `../../../bootstrap/aws/` | `bootstrap/terraform.tfstate` |
 | Foundation | `foundation/`: VPC, EKS, RDS, controller IAM/Pod Identity, frontend SG/rules | `dev/terraform.tfstate` |
-| Platform | `platform/`: Argo CD and load balancer controller Helm releases | `dev/platform/terraform.tfstate` |
+| Platform | `platform/`: Argo CD, controller, CRD and GatewayClass Helm releases | `dev/platform/terraform.tfstate` |
 | Edge | `edge/`: ALB lookup, CloudFront, functions and access logs | `dev/edge/terraform.tfstate` |
 
 All keys use the protected/versioned S3 bucket
@@ -30,7 +30,7 @@ here are scoped to this target.
 Application deployments use [the GitOps repository](https://github.com/pquarg/gitops/blob/main/README.md).
 
 Install Terraform `1.17.x` (CI `1.17.1`), AWS CLI v2, kubectl, Python 3 and Node.js
-for tests. Configure and authenticate the `aws-project` profile for the account
+for tests, plus Helm 3 and kubeconform for manifest validation. Configure and authenticate the `aws-project` profile for the account
 and Region above. Verify the identity before provisioning. Create the protected
 state bucket using [backend setup](../../../docs/state.md#create-the-aws-state-backend)
 before planning the foundation stage.
@@ -126,10 +126,14 @@ performed by validation.
 
 Use [teardown/rebuild](docs/teardown.md) and
 [retention choices](CLEANUP_PLAN.md). Across roots, Terraform cannot enforce
-deletion dependencies: edge must go first, then app Ingresses while the controller
+deletion dependencies: edge must go first, then app Gateways (and any legacy Ingresses) while the controller
 runs, then platform, then foundation. Backend deletion is a separately selected
 last scope.
 
 Read [architecture](docs/architecture.md),
 [full deployment walkthrough](https://github.com/pquarg/gitops/blob/main/docs/aws/deploy-from-scratch.md) and
 [public access verification](https://github.com/pquarg/gitops/blob/main/docs/aws/public-access.md) before live work.
+
+See [Gateway API lifecycle](../../../shared/gateway-api.md) for the Standard `v1.6.2` pin,
+controller CRD ownership, readiness and deletion ordering. AWS changes are
+configuration preparation for its first deployment; no AWS runtime was verified.

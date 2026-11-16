@@ -33,7 +33,9 @@ STATE_KEYS = {
     "edge": "dev/edge/terraform.tfstate",
 }
 RECORD_VERSION = 3
-PLATFORM_ADDRESSES = {"helm_release.argocd", "helm_release.load_balancer_controller"}
+PLATFORM_ADDRESSES = {"helm_release.argocd", "helm_release.load_balancer_controller",
+                      "helm_release.gateway_api_crds", "helm_release.aws_controller_crds",
+                      "helm_release.alb_gateway_class"}
 SETTINGS = {
     "aws_db_instance.postgres": {
         "deletion_protection", "skip_final_snapshot", "delete_automated_backups",
@@ -330,7 +332,7 @@ class Teardown:
                       "--name", CLUSTER, "--kubeconfig", str(self.directory / "kubeconfig"),
                       "--alias", "teardown"], capture=True)
             self.kube("get", "nodes", "-o", "json")
-            self.kube("get", "ingresses,services", "-A", "-o", "json")
+            self.load_balancer_requests()
         elif inventory["clusters"]:
             raise Failure("EKS is absent but still in state; reconcile the earlier partial teardown first.")
         self.record["inventory"] = inventory
@@ -396,6 +398,17 @@ class Teardown:
             print(f"Waiting for {description} ...", flush=True)
             time.sleep(15)
 
+    def load_balancer_requests(self):
+        resources = json.loads(self.kube("get", "ingresses,services", "-A", "-o", "json"))["items"]
+        # --ignore-not-found tolerates an absent CRD, but NOT API/permission errors.
+        crd = self.kube("get", "crd", "gateways.gateway.networking.k8s.io",
+                        "--ignore-not-found", "-o", "name").strip()
+        if crd:
+            resources += json.loads(self.kube("get", "gateways.gateway.networking.k8s.io",
+                                              "-A", "-o", "json"))["items"]
+        return [r for r in resources if r["kind"] in {"Ingress", "Gateway"}
+                or r.get("spec", {}).get("type") == "LoadBalancer"]
+
     def remove_ingresses(self):
         if CLUSTER not in self.record["inventory"]["clusters"]:
             return
@@ -407,9 +420,7 @@ class Teardown:
         if not selected:
             # Foundation-only installs may never have had a platform. Proceed only
             # when neither Kubernetes requests nor AWS load balancers need cleanup.
-            resources = json.loads(self.kube("get", "ingresses,services", "-A", "-o", "json"))["items"]
-            requests = [r for r in resources if r["kind"] == "Ingress"
-                        or r.get("spec", {}).get("type") == "LoadBalancer"]
+            requests = self.load_balancer_requests()
             if requests or not self.no_load_balancers():
                 raise Failure("No Argo CD controllers but load balancer resources remain; repair cleanup first.")
             self.remove_backend_groups()
@@ -426,18 +437,19 @@ class Teardown:
             self.wait(f"{kind_name} pods to stop", lambda: not json.loads(
                 self.kube("-n", "argocd", "get", "pods", "-l", selector, "-o", "json")
             )["items"], seconds=180)
-        resources = json.loads(self.kube("get", "ingresses,services", "-A", "-o", "json"))["items"]
-        if not any(r["kind"] == "Ingress" or r.get("spec", {}).get("type") == "LoadBalancer"
-                   for r in resources) and self.no_load_balancers():
+        resources = self.load_balancer_requests()
+        if not resources and self.no_load_balancers():
             self.remove_backend_groups()
             return
         self.kube("-n", "kube-system", "rollout", "status",
                   "deployment/aws-load-balancer-controller", "--timeout=300s")
         for r in resources:
-            if r["kind"] == "Ingress" or r.get("spec", {}).get("type") == "LoadBalancer":
+            if r["kind"] in {"Ingress", "Gateway"} or r.get("spec", {}).get("type") == "LoadBalancer":
                 self.kube("-n", r["metadata"]["namespace"], "delete", r["kind"],
                           r["metadata"]["name"], "--ignore-not-found=true", "--wait=true",
                           "--timeout=600s")
+        if self.load_balancer_requests():
+            raise Failure("Load balancer requests/finalizers remain; keep the controller running and resume.")
         self.wait("controller-owned load balancers and target groups to disappear", self.no_load_balancers)
         self.remove_backend_groups()
 

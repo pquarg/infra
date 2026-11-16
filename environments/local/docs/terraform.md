@@ -1,7 +1,8 @@
 # Terraform for the local platform
 
 kind owns the cluster and host port mapping. One local Terraform root,
-`platform`, owns Helm releases `argocd/argocd` and `traefik/traefik`.
+`platform`, owns Helm releases `argocd/argocd`, `traefik/traefik` and
+`gateway-system/gateway-api-crds`.
 Argo CD owns app resources from `gitops`; Compose owns the separate database.
 Terraform reads this checkout and uses local state, with no AWS provider or
 backend. See [prerequisites](../README.md#prerequisites) for required tools.
@@ -12,7 +13,7 @@ Both infrastructure environments select Argo CD chart `10.11.6`, with default
 images Argo CD `v3.5.6`, Dex `v2.46.1` and Redis `8.6.4-alpine`. See the chart's
 [versioned values](https://github.com/argoproj/argo-helm/blob/argo-cd-10.11.6/charts/argo-cd/values.yaml).
 Local uses `application.instanceLabelKey: app.kubernetes.io/instance` for app
-tracking. Traefik chart `42.0.0` provides standard Ingress support, class
+tracking. Traefik chart `42.0.0` provides Gateway API support alongside transition Ingress support, class
 `traefik`, NodePort `30080`, with dashboard/HTTPS exposure and Traefik CRDs
 disabled. The Helm provider is pinned to `3.3.0`.
 
@@ -43,7 +44,7 @@ file. The planner explicitly selects the standard cluster even when ignored
 Terraform variables specify another name. Other local clusters require separate
 checkouts/state and an explicitly adapted target; do not repoint existing state.
 
-A fresh plan creates two Helm releases. `scripts/bootstrap-kind.sh` performs
+A fresh plan creates three Helm releases; Standard CRDs precede Traefik. `scripts/bootstrap-kind.sh` performs
 one interactive apply, then checks CRDs and both controllers. It refuses
 untracked installations before applying. Helm plans do not show a full
 Kubernetes object diff; render both charts with `scripts/validate.sh` and
@@ -90,7 +91,7 @@ for deliberate replacement of the same named kind cluster.
 
 ## Safeguards and validation limits
 
-Both releases have `prevent_destroy`, disable forced replacement and automatic
+All three releases have `prevent_destroy`, disable forced replacement and automatic
 ownership takeover, and use atomic rollback for upgrades. These settings do not
 protect against removing configuration, internal chart changes or manual cluster
 deletion. Keep independent database and credential backups.
@@ -101,3 +102,9 @@ and runs database/bootstrap/teardown safety tests. It needs internet and the
 [documented tools](../README.md#prerequisites), but no running cluster or AWS
 credentials. It does not validate kind YAML, CRD semantics, live plans,
 credentials, application data or runtime health.
+
+For CRD ownership recovery, verify the `gateway-api-crds` Helm record and its
+Standard `v1.6.2` definitions before importing
+`helm_release.gateway_api_crds gateway-system/gateway-api-crds`. Never import a
+kubectl-installed bundle as a Helm release or delete CRDs to resolve ownership.
+Follow [Gateway API lifecycle](../../../shared/gateway-api.md) for upgrades.

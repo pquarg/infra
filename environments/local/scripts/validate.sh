@@ -21,13 +21,15 @@ render_dir="$(mktemp -d)"
 trap 'rm -rf -- "$render_dir"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+python3 "$project_root/../../scripts/update-gateway-schemas.py" --output "$render_dir/schemas"
+diff -r "$project_root/../../shared/gateway-schemas" "$render_dir/schemas"
 # Configuration only; no Docker daemon, real settings, passwords or volumes.
 LOCAL_DB_SECRETS_DIR="$render_dir/secrets" LOCAL_DB_PORT=5433 \
   docker compose --env-file database/.env.example -f database/compose.yaml config --quiet
 # Validate clean copies so working state/providers and local .tfvars are untouched.
 validation_root="$render_dir/environments/local"
 mkdir -p "$validation_root/argocd" "$validation_root/traefik" "$render_dir/shared/argocd"
-cp "$project_root/../../shared/argocd/values.yaml" "$render_dir/shared/argocd/"
+cp -R "$project_root/../../shared/." "$render_dir/shared/"
 cp argocd/chart-version.txt argocd/values.yaml "$validation_root/argocd/"
 cp traefik/chart-version.txt traefik/values.yaml "$validation_root/traefik/"
 for stage in platform; do
@@ -58,6 +60,14 @@ kubeconform -strict -summary -skip CustomResourceDefinition \
 kubeconform -strict -summary \
   -kubernetes-version "${KUBERNETES_VERSION:-1.36.0}" \
   -schema-location default \
+  -schema-location "$project_root/../../shared/gateway-schemas/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
   -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
   "$render_dir/platform.yaml"
+for chart in gateway-api-crds; do
+  (cd "$project_root/../../shared/$chart" && shasum -a 256 -c SHA256SUMS)
+  helm lint "$project_root/../../shared/$chart"
+  helm template "$chart" "$project_root/../../shared/$chart" > "$render_dir/$chart.yaml"
+  kubeconform -strict -summary -skip CustomResourceDefinition "$render_dir/$chart.yaml"
+done
+python3 "$project_root/../../tests/gateway-platform.py" local "$render_dir/platform.yaml" "$render_dir/gateway-api-crds.yaml"
 printf 'Platform configuration checks passed.\n'

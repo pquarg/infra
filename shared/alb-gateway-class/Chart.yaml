@@ -1,0 +1,4 @@
+apiVersion: v2
+name: alb-gateway-class
+version: 1.0.0
+type: application

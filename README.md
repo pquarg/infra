@@ -56,3 +56,7 @@ Read the [environment contract](docs/environments.md) before operational changes
 and [state and recovery](docs/state.md) before backend setup or state recovery.
 Private credentials, state and backups are separate from Git source history.
 The repository remote is [`pquarg/infra`](https://github.com/pquarg/infra).
+
+See [Gateway API lifecycle](shared/gateway-api.md) for the Standard `v1.6.2` pin,
+controller CRD ownership, readiness and deletion ordering. AWS changes are
+configuration preparation for its first deployment; no AWS runtime was verified.

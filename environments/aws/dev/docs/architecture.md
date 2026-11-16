@@ -7,7 +7,7 @@ manifests from `gitops`. These repositories remain independent.
 ```text
 Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → private RDS
                                             ↑
-                       AWS Load Balancer Controller reads the app Ingress
+                       AWS Load Balancer Controller reads the app Gateway
 ```
 
 | Owner | Configuration and effect |
@@ -15,7 +15,7 @@ Client → HTTPS CloudFront → VPC origin → private ALB → EKS FastAPI → p
 | Backend bootstrap | [`../../../bootstrap/aws/`](../../../../bootstrap/aws) owns only the protected S3 state bucket |
 | Foundation | [`foundation/`](../foundation) owns VPC/subnets/NAT, EKS/workers/add-ons, RDS, controller IAM/policy/Pod Identity and frontend SG/rules |
 | Platform | [`platform/`](../platform) owns real Helm releases `argocd` and `aws-load-balancer-controller` |
-| App GitOps | `gitops` owns ApplicationSet, Deployment, Service, ConfigMaps, migration Job and Ingress; app sync remains manual |
+| App GitOps | `gitops` owns ApplicationSet, Deployment, Service, ConfigMaps, migration Job, Gateway, HTTPRoute and AWS routing configuration; app sync remains manual |
 | Load balancer controller | Owns the app ALB, target groups and backend networking; Terraform only looks up the ALB |
 | Edge | [`edge/`](../edge) owns CloudFront origin/distribution/functions/headers/log delivery and the log bucket |
 | Credential provisioning | App database login, database Secret, GHCR Secret and Argo CD Git credential stay outside Terraform/app Git |
@@ -44,7 +44,7 @@ All state uses the same encrypted/locked/versioned bucket, with keys:
 
 - `bootstrap/terraform.tfstate`: backend bootstrap.
 - `dev/terraform.tfstate`: foundation.
-- `dev/platform/terraform.tfstate`: the two Helm releases.
+- `dev/platform/terraform.tfstate`: the controller, CRD and GatewayClass Helm releases.
 - `dev/edge/terraform.tfstate`: CloudFront and logs.
 
 Stage discovery uses AWS data sources and small non-secret inputs rather than `terraform_remote_state`. Platform
@@ -77,7 +77,11 @@ workspace/backend arguments. It delegates to the stage helper, which invokes
 Platform and edge also require an explicit `--context`. Foundation is valid
 before an ALB exists; no bootstrap targets are required. Separate roots cannot
 express a Terraform dependency graph for removal: destroy edge, pause app
-reconciliation/remove Ingresses, wait for the running controller to remove ALBs/
+reconciliation/remove Gateways and legacy Ingresses, wait for the running controller to remove ALBs/
 targets, remove platform, remove foundation, then optionally remove backend last.
 See [teardown](teardown.md). Validation runs offline tests and backend-disabled
 Terraform checks; it does not establish runtime health.
+
+See [Gateway API lifecycle](../../../../shared/gateway-api.md) for the Standard `v1.6.2` pin,
+controller CRD ownership, readiness and deletion ordering. AWS changes are
+configuration preparation for its first deployment; no AWS runtime was verified.

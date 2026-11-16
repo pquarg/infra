@@ -36,6 +36,10 @@ for controller in argocd-server argocd-repo-server argocd-applicationset-control
   "${kube[@]}" -n argocd rollout status "deployment/$controller" --timeout=300s
 done
 "${kube[@]}" -n kube-system rollout status deployment/aws-load-balancer-controller --timeout=300s
+repository="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+python3 "$repository/scripts/check-gateway.py" --environment aws --context "$context" --kubeconfig "$kubeconfig"
+python3 "$repository/scripts/check-gateway.py" --environment aws --context "$context" --kubeconfig "$kubeconfig" --namespace demo-api --route demo-api
+"${kube[@]}" -n demo-api wait --for=condition=Programmed gateway/demo-api --timeout=300s
 lb_arn="$(aws "${aws_args[@]}" elbv2 describe-load-balancers --names dev-demo-api --query 'LoadBalancers[?State.Code==`active`].LoadBalancerArn' --output text)"
 [[ -n "$lb_arn" && "$lb_arn" != None ]] || { printf 'Error: app ALB must be Active before planning edge.\n' >&2; exit 1; }
 targets="$(aws "${aws_args[@]}" elbv2 describe-target-groups --load-balancer-arn "$lb_arn" --query 'TargetGroups[].TargetGroupArn' --output text)"

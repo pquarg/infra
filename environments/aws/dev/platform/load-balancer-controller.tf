@@ -1,4 +1,6 @@
 resource "helm_release" "load_balancer_controller" {
+  depends_on = [helm_release.gateway_api_crds, helm_release.aws_controller_crds]
+  skip_crds  = true
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"

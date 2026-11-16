@@ -23,7 +23,7 @@ if [[ -f "$platform_state" ]]; then
   tracked_resources="$(terraform -chdir="$project_root" state list "-state=$platform_state")"
   while IFS= read -r resource; do
     case "$resource" in
-      ''|helm_release.argocd|helm_release.traefik) ;;
+      ''|helm_release.argocd|helm_release.traefik|helm_release.gateway_api_crds) ;;
       *) printf 'Error: unexpected resource in platform state: %s. Inspect ownership before applying.\n' "$resource" >&2; exit 1 ;;
     esac
   done <<< "$tracked_resources"
@@ -42,3 +42,14 @@ for release in argocd traefik; do
     fi
   fi
 done
+
+# A CRD-only release has no Deployment. Detect both its Helm record and any
+# pre-existing standard CRDs before creating a binding; never take ownership.
+if ! grep -Fxq 'helm_release.gateway_api_crds' <<< "$tracked_resources"; then
+  records="$("${kube[@]}" -n gateway-system get secrets -l owner=helm,name=gateway-api-crds -o name)"
+  crds="$("${kube[@]}" get crds -o name)"
+  if [[ -n "$records" ]] || grep -q '\.gateway.networking.k8s.io$' <<< "$crds"; then
+    printf 'Error: untracked Gateway API CRDs/release; recover verified state before applying.\n' >&2
+    exit 1
+  fi
+fi

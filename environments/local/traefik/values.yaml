@@ -6,6 +6,13 @@ ingressClass:
 providers:
   kubernetesCRD:
     enabled: false
+  kubernetesGateway:
+    enabled: true
+    experimentalChannel: false
+    statusAddress:
+      ip: 127.0.0.1
+      service:
+        enabled: false
   kubernetesIngress:
     enabled: true
     publishedService:
@@ -21,3 +28,22 @@ ports:
   websecure:
     expose:
       default: false
+
+# Retain Ingress during the reviewed app cutover and rollback window.
+gatewayClass:
+  enabled: true
+  name: traefik
+gateway:
+  enabled: true
+  name: traefik-gateway
+  listeners:
+    web:
+      port: 8000
+      protocol: HTTP
+      namespacePolicy:
+        from: Selector
+        selector:
+          matchExpressions:
+            - key: kubernetes.io/metadata.name
+              operator: In
+              values: [demo-api, job-tracker]

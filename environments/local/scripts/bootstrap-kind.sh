@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   printf 'Usage: %s [cluster]\n' "${0##*/}"
   printf 'Default: cluster=deployment; requires an existing kind cluster.\n'
-  printf 'Runs one reviewed Terraform apply: pinned Argo CD and Traefik Helm releases.\n'
+  printf 'Runs one reviewed Terraform apply: pinned Standard CRDs, Argo CD and Traefik Helm releases.\n'
   printf 'Does not register or deploy apps from gitops.\n'
 }
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -34,7 +34,7 @@ umask 077
 "$project_root/scripts/check-platform.sh" "$cluster" "$kubeconfig"
 terraform_args=("-var=cluster_name=$cluster" "-var=kubeconfig_path=$kubeconfig")
 terraform -chdir="$project_root/platform" init -input=false -lockfile=readonly
-printf 'Review the combined Argo CD and Traefik Helm plan.\n'
+printf 'Review the combined CRD, Argo CD and Traefik Helm plan.\n'
 terraform -chdir="$project_root/platform" apply "${terraform_args[@]}"
 "${kube[@]}" wait --for=condition=Established \
   crd/applications.argoproj.io crd/applicationsets.argoproj.io --timeout=120s

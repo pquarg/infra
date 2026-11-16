@@ -28,6 +28,7 @@ output "context" {
 }
 
 resource "helm_release" "traefik" {
+  depends_on       = [helm_release.gateway_api_crds]
   name             = "traefik"
   repository       = "https://traefik.github.io/charts"
   chart            = "traefik"

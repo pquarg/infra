@@ -1,0 +1,4 @@
+apiVersion: v2
+name: gateway-api-crds
+version: 1.6.2
+type: application

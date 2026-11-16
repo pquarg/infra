@@ -47,6 +47,9 @@ if name == 'kind': print('deployment-control-plane')
 if name == 'kubectl':
     if 'config view' in args: print('wrong' if case == 'context' else 'https://eks.example')
     if 'get nodes' in args: print('wrong' if case == 'context' else 'deployment-control-plane')
+    if any('get ' + kind + ' ' in args for kind in ('gatewayclass', 'httproute', 'gateway')):
+        subprocess = __import__('subprocess')
+        subprocess.run([sys.executable, os.environ['GATEWAY_FIXTURE'], *sys.argv[1:]], check=True)
 if name == 'terraform':
     assert os.environ.get('TF_WORKSPACE') == 'default'
     assert not any(k.startswith('TF_CLI_ARGS') for k in os.environ)
@@ -65,7 +68,7 @@ if name == 'aws':
         for name in ('aws', 'terraform', 'kubectl', 'kind'):
             (self.bin / name).symlink_to(fake)
         self.env = dict(os.environ, PATH=str(self.bin) + ':' + os.environ['PATH'], LOG=str(self.log),
-                        TF_CLI_ARGS_init='-backend-config=wrong', TF_DATA_DIR='/wrong', TF_WORKSPACE='wrong')
+                        GATEWAY_FIXTURE=str(REPOSITORY / 'tests/gateway-status.py'), TF_CLI_ARGS_init='-backend-config=wrong', TF_DATA_DIR='/wrong', TF_WORKSPACE='wrong')
 
     def run_command(self, *args, script='plan.sh', case=''):
         result = subprocess.run(['bash', str(self.root / 'scripts' / script), *args],
@@ -158,4 +161,4 @@ if name == 'aws':
         local = '\n'.join(p.read_text() for p in (REPOSITORY / 'environments/local/platform').glob('*.tf'))
         self.assertNotIn('hashicorp/aws', local)
         self.assertNotIn('backend "s3"', local)
-        self.assertEqual(local.count('prevent_destroy = true'), 2)
+        self.assertEqual(local.count('prevent_destroy = true'), 3)
