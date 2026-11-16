@@ -57,11 +57,21 @@ Existing cluster, mounts, Secrets, databases, images and controller bindings sta
 in place. An existing-state plan should add only the CRD release and update
 Traefik in place; unexpected changes require review before apply.
 
-A fresh cluster uses the same full platform apply. No targeted install is part
-of this design. Fresh-install execution must be verified on a separately scoped
-test cluster before claiming that acceptance criterion; rendering and a plan
-against an existing cluster do not demonstrate it. Do not rebuild the working
-cluster to perform that test.
+A fresh cluster uses the same full platform apply. This was verified on
+16 November 2026 after an explicitly authorized rebuild of kind `deployment`
+using the pinned Kubernetes `v1.36.4` image. Before installation the cluster had
+no custom CRDs and no Helm releases. The existing local state was retained;
+refresh proposed three creates, with no targeted stages, imports or deletions.
+One full saved-plan apply succeeded. Its log shows `gateway_api_crds` completed
+before `traefik` started, followed by Established/Accepted/Programmed readiness.
+Both apps were recovered from published GitOps with their original images,
+credentials, database data and sync policies, and passed runtime verification.
+
+Private run evidence and verified database/image backups remain outside Git
+under the operator's local recovery directory. This demonstrates the fresh-cluster
+installation path as well as recovery with retained local state; configuration
+validation alone would not demonstrate either. Future cluster deletion still
+requires explicit authorization and the [rebuild procedure](../environments/local/docs/rebuild.md).
 
 Before changing a CRD pin, review upstream compatibility, stored versions,
 conversion requirements and the safe-upgrade policy. Replace the vendored bundle,

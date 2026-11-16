@@ -53,7 +53,7 @@ Docker volume remain running and unchanged.
 
 No database stop or data move is needed just to replace kind. Database
 [recovery or deliberate reset](database.md) is independent of cluster replacement.
-Do not use `terraform destroy`: kind owns the cluster, and both controller
+Do not use `terraform destroy`: kind owns the cluster, and all three platform
 releases have `prevent_destroy`.
 
 ## Interrupted teardown
@@ -83,3 +83,50 @@ GatewayClass and shared local Gateway. Recover its Helm binding before applying
 if the cluster survives; after an authorized rebuild the full platform apply
 installs CRDs before Traefik. Restore app HTTPRoutes through GitOps after Secrets
 and database probes are ready. Never delete CRDs as a routing rollback.
+
+
+## Preserve credentials and maintenance policies during recovery
+
+Save the original Application policies and workload replica settings privately
+**before** pausing writers or reconcilers for database backup. A later teardown
+snapshot may already contain the paused settings. Verify backups of both app
+databases; tracker backup/restore is separate from demo-api's helper. PostgreSQL
+and its external volume stay running throughout a kind-only rebuild.
+
+Before deleting kind, preserve the selected locally loaded image releases in a
+private archive. Prefer the exact running content/digests; rebuilding the same
+mutable tag is not evidence of image equivalence. Reload the archived images
+into the replacement cluster before the Pod database probes and app registration.
+
+After the platform apply, restore the app connection/registry Secrets and Argo
+repository, administrator and UI TLS Secrets using sanitized metadata. Recreate
+app namespaces first. Restore neither old Helm release records nor old
+ServiceAccount tokens. Leave fresh generated internal credentials such as Redis
+consistent with the new controllers. Never apply an entire Secrets snapshot
+blindly; it is private recovery material, not a desired-state manifest.
+
+To preserve an app that was already paused, temporarily scale the new
+ApplicationSet controller to zero before bootstrap. Bootstrap can still install
+its ApplicationSet from Git. Recreate the saved app specifications with their
+original sync policies, using that **new** ApplicationSet UID for owner references,
+then resume the ApplicationSet controller's original replica count. Omit saved
+Application status, operations, resourceVersion and old owner UIDs. The source
+repository/path/revision and destination must match the current local contract.
+Run the paused app's one-time full hook-enabled sync deliberately; do not silently
+re-enable its auto-sync. Recheck repository access, controller readiness and all
+Application policies after recovery.
+
+## Verified Gateway rebuild
+
+On 16 November 2026, kind `deployment` was rebuilt with pinned Kubernetes
+`v1.36.4`. A bare cluster with no CRDs/releases accepted one full platform plan
+creating the three Helm releases. Standard CRDs completed before Traefik started;
+no targeted apply or Terraform state removal was needed. The controller/chart
+pins, localhost mapping, legacy mounts and database volume were preserved.
+
+Both apps passed their Pod database probes and full migration hooks after image
+and credential restoration. Gateway route status, health/readiness, existing
+synthetic logins/sessions, tracker uploads/downloads/parsing/search profiles,
+account isolation and API/frontend path behavior passed. Admin/TLS Secret data
+and original sync policies were preserved. This is local runtime evidence; no AWS
+deployment or paid discovery was performed.
