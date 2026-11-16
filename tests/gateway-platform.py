@@ -25,7 +25,8 @@ if sys.argv[1] == 'local':
     assert next(p for p in service['spec']['ports'] if p['name'] == 'web')['nodePort'] == 30080
     args = resources['Deployment', 'traefik']['spec']['template']['spec']['containers'][0]['args']
     assert '--providers.kubernetesgateway' in args
-    assert '--providers.kubernetesingress' in args, 'Keep rollback support during transition'
+    assert not any(arg.startswith('--providers.kubernetesingress') for arg in args)
+    assert ('IngressClass', 'traefik') not in resources, 'Local apps now use Gateway API'
     assert not any(arg.startswith('--providers.kubernetescrd') for arg in args)
     assert '--providers.kubernetesgateway.statusaddress.ip=127.0.0.1' in args
     assert not any('statusaddress.service' in arg for arg in args)

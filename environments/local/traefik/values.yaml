@@ -1,7 +1,7 @@
 api:
   dashboard: false
 ingressClass:
-  enabled: true
+  enabled: false
   isDefaultClass: false
 providers:
   kubernetesCRD:
@@ -14,7 +14,7 @@ providers:
       service:
         enabled: false
   kubernetesIngress:
-    enabled: true
+    enabled: false
     publishedService:
       enabled: false
     ingressEndpoint:
@@ -29,7 +29,7 @@ ports:
     expose:
       default: false
 
-# Retain Ingress during the reviewed app cutover and rollback window.
+# Apps use HTTPRoutes; Ingress rollback requires a reviewed platform change.
 gatewayClass:
   enabled: true
   name: traefik

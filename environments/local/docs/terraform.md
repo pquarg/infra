@@ -13,9 +13,9 @@ Both infrastructure environments select Argo CD chart `10.11.6`, with default
 images Argo CD `v3.5.6`, Dex `v2.46.1` and Redis `8.6.4-alpine`. See the chart's
 [versioned values](https://github.com/argoproj/argo-helm/blob/argo-cd-10.11.6/charts/argo-cd/values.yaml).
 Local uses `application.instanceLabelKey: app.kubernetes.io/instance` for app
-tracking. Traefik chart `42.0.0` provides Gateway API support alongside transition Ingress support, class
-`traefik`, NodePort `30080`, with dashboard/HTTPS exposure and Traefik CRDs
-disabled. The Helm provider is pinned to `3.3.0`.
+tracking. Traefik chart `42.0.0` provides Gateway API routing with GatewayClass
+`traefik` and NodePort `30080`. The unused Ingress provider/class, dashboard,
+HTTPS exposure and Traefik CRD provider are disabled. The Helm provider is pinned to `3.3.0`.
 
 Review the full plan before changing charts or values. Terraform applies
 controller upgrades independently of published GitOps changes. Verify all

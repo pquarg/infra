@@ -263,6 +263,7 @@ References: [kind configuration](https://kind.sigs.k8s.io/docs/user/configuratio
 [Argo CD declarative setup](https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/).
 
 Gateway API adoption, CRD ownership and the reviewed cutover are documented in
-[Gateway API lifecycle](../../shared/gateway-api.md). Ingress remains enabled
-until the published demo-api, Mailpit and job-tracker HTTPRoutes pass runtime
-verification. A healthy controller alone does not prove route attachment.
+[Gateway API lifecycle](../../shared/gateway-api.md). The published demo-api,
+Mailpit and job-tracker HTTPRoutes passed runtime verification. The final configuration disables Ingress support through a separate
+reviewed platform apply; rollback to Ingress requires restoring that support
+first. A healthy controller alone does not prove route attachment.

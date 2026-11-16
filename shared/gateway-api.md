@@ -85,10 +85,18 @@ other rendered resources, including the upgrade guard, are schema checked.
 
 ## Local transition and rollback
 
-Ingress support remains enabled while app routes are published and verified.
+Ingress support was retained while app routes were published and verified.
+Both local app cutovers have passed; the final configuration disables the unused
+Ingress provider and class. Apply that change only after reviewing the full plan
+and confirming the cluster has no Ingresses.
 Follow the companion GitOps `docs/gateway-api.md`: smoke-test a distinct hostname,
 then demo-api/Mailpit, then job-tracker. Local app sync can rerun migration hooks.
-After all HTTPRoutes pass current-generation status and existing app journeys,
+The completed cutover checked route conditions, original hosts, login/session
+continuity, password reset, tracker data/parsing, path precedence and namespace
+attachment denial. The tracker uses an Exact `/api` frontend rule to preserve the
+old Ingress behavior; `/api/` and nested paths select its API.
+
+For this or a future cutover, after all HTTPRoutes pass status and app journeys,
 confirm `kubectl --context kind-deployment get ingress -A` is empty. Only then
 set `providers.kubernetesIngress.enabled: false` and `ingressClass.enabled: false`,
 validate, review another full local platform plan and apply separately.
