@@ -29,11 +29,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--environment', required=True, choices=['local'])
     parser.add_argument('--password-file', required=True)
+    parser.add_argument('--expected-revision', choices=['e7b13a920ac4', 'f42c0317a8d9'],
+                        help='Optional schema head for independent backup verification')
     parser.add_argument('action', choices=['provision', 'check', 'backup', 'verify-backup', 'restore'])
     parser.add_argument('path', nargs='?', help='Backup directory or archive (outside Git)')
     args = parser.parse_args()
     if (args.action in {'backup', 'verify-backup', 'restore'}) != bool(args.path):
         parser.error('backup needs a directory; verify-backup/restore need an archive')
+    if args.expected_revision and args.action != 'verify-backup':
+        parser.error('--expected-revision applies only to verify-backup')
     password_file = outside_git(args.password_file)
     if not password_file.exists() and args.action == 'provision':
         with open(password_file, 'x', opener=lambda p, flags: os.open(p, flags, 0o600)) as file:
@@ -86,6 +90,16 @@ def main():
         sql('BEGIN; CREATE TABLE public.__tracker_probe (id integer); '
             'INSERT INTO public.__tracker_probe VALUES (1); ROLLBACK;')
 
+    def invalidate_restored_grants(database):
+        # Writers remain stopped until restore and credential invalidation both
+        # succeed. An old archive must not reactivate a disconnected grant.
+        sql("DO $reset$ BEGIN IF to_regclass('public.chatgpt_connections') IS NOT NULL THEN "
+            "UPDATE public.chatgpt_connections SET credentials = NULL, "
+            "state = 'reconnect_required', error = 'restored_credentials_require_reconnect', "
+            "generation = generation + 1; DELETE FROM public.chatgpt_authorizations; "
+            "UPDATE public.users SET processing_revision = NULL, generation = generation + 1; "
+            "END IF; END $reset$;", database=database)
+
     if args.action == 'provision':
         # Add only missing resources. Never reset an existing password/database.
         sql("\\getenv tracker_password PGPASSWORD\n"
@@ -128,6 +142,7 @@ def main():
     else:
         archive = outside_git(args.path).read_bytes()
         if args.action == 'verify-backup':
+            expected = args.expected_revision or sql('SELECT version_num FROM alembic_version;')
             scratch = 'jt_restore_check_' + uuid.uuid4().hex
             sql(f'CREATE DATABASE {scratch} OWNER postgres;', admin=True, database='postgres')
             try:
@@ -137,7 +152,8 @@ def main():
                     admin=True, database=scratch)
                 client(['pg_restore', '-h', '127.0.0.1', '-U', 'job_tracker', '-d', scratch,
                         '--no-owner', '--no-acl', '--exit-on-error', '--single-transaction'], data=archive)
-                if sql('SELECT version_num FROM alembic_version;', database=scratch) != 'e7b13a920ac4':
+                invalidate_restored_grants(scratch)
+                if sql('SELECT version_num FROM alembic_version;', database=scratch) != expected:
                     raise ValueError('Restored schema does not match the current release')
                 counts = sql("SELECT 'accounts=' || count(*) FROM users;", database=scratch)
                 print('Separate verification database restored; schema head verified; ' + counts)
@@ -150,7 +166,9 @@ def main():
                 raise ValueError('Refusing restore: public schema is not empty; no data was changed')
             client(['pg_restore', '-h', '127.0.0.1', '-U', 'job_tracker', '-d', 'job_tracker',
                     '--no-owner', '--no-acl', '--exit-on-error', '--single-transaction'], data=archive)
-            print('Restored into empty tracker schema. Verify logins/data before resuming writers.')
+            invalidate_restored_grants('job_tracker')
+            print('Restored into empty tracker schema. ChatGPT grants require reconnect. '
+                  'Verify logins/data before resuming writers.')
 
 
 if __name__ == '__main__':

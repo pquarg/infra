@@ -41,7 +41,7 @@ alone does not establish Pod connectivity. See the
 ## Independent backup and restore
 
 Tracker originals, extracted evidence, accounts, session/recovery hashes, profiles,
-research, decisions and notes all live in this database. No records are copied
+research, decisions, notes and encrypted ChatGPT grants all live in this database. No records are copied
 from the app development/test databases. Protect archives as private documents.
 Stop traffic and API/worker writers for a release recovery point, and pause
 `job-tracker` auto-sync while doing so. Leave demo-api running.
@@ -54,10 +54,15 @@ python3 environments/local/scripts/job-tracker-database.py --environment local -
 The custom-format backup uses only the tracker login/database, mode 600 and an
 atomic rename after archive readability succeeds. Failures remove partial files.
 Verification restores transactionally into a uniquely named `jt_restore_check_*`
-database, checks the expected schema revision and account count, and drops only
+database, clears restored ChatGPT credentials/authorizations and invalidates AI
+approvals, checks the schema revision and account count, and drops only
 that verification database, including on failure. It never drops the tracker or
 demo database. This checks restoration/schema, not external provider quality;
 check existing login, originals and decisions after an actual recovery too.
+By default verification compares against the live database head, so an upgrade's
+pre-migration backup still verifies. For independent/older-archive verification,
+select `--expected-revision e7b13a920ac4` (previous release) or `f42c0317a8d9`
+(ChatGPT connections) explicitly before `verify-backup`.
 
 For actual recovery, stop writers and provision an **empty** tracker database
 with the original password file. Restore before allowing automatic migrations:
@@ -72,6 +77,14 @@ separate destructive authorization and a reviewed recovery plan. Restore uses
 `--no-owner --no-acl --single-transaction --exit-on-error`, retaining ownership
 under the restricted tracker login. Cluster roles/passwords and provider keys
 are not in these dumps; recover their private configuration separately.
+
+After restore, the helper clears all restored ChatGPT credentials and pending
+authorizations and increments connection/user generations, invalidating AI
+approvals. Keep writers stopped until this step succeeds. An old archive must
+not reactivate a grant disconnected after the backup. Users reconnect and renew
+approval; documents/accounts/decisions remain. Raw pg_restore alone does not
+perform this step. Protect the stable installation encryption key and host ID
+outside Git and separately from archives; losing them requires reconnecting.
 
 Verify Alembic head, readiness, existing account login, uploads and decisions
 before resuming writers/traffic and auto-sync. A rollback to older app images

@@ -107,3 +107,29 @@ class TrackerDatabaseTests(unittest.TestCase):
         self.password.chmod(0o644)
         with self.assertRaisesRegex(ValueError, 'chmod 600'):
             self.invoke('check')
+
+    def test_restore_clears_only_restored_chatgpt_grants(self):
+        archive = self.root / 'backup.dump'
+        archive.write_bytes(b'archive')
+        self.invoke('restore', archive)
+        resets = [(c, k['input']) for c, k in self.calls
+                  if b'UPDATE public.chatgpt_connections' in k.get('input', b'')]
+        self.assertEqual(len(resets), 1)
+        command, sql = resets[0]
+        self.assertEqual(command[command.index('-d') + 1], 'job_tracker')
+        self.assertIn(b'credentials = NULL', sql)
+        self.assertIn(b'DELETE FROM public.chatgpt_authorizations', sql)
+        self.assertNotIn(b'DELETE FROM public.users', sql)
+        restore_at = next(i for i, (c, _) in enumerate(self.calls) if 'pg_restore' in c)
+        reset_at = next(i for i, (_, k) in enumerate(self.calls)
+                        if b'UPDATE public.chatgpt_connections' in k.get('input', b''))
+        self.assertLess(restore_at, reset_at)
+
+    def test_verification_resets_credentials_only_in_scratch(self):
+        archive = self.root / 'backup.dump'
+        archive.write_bytes(b'archive')
+        self.invoke('verify-backup', archive)
+        resets = [c for c, k in self.calls
+                  if b'UPDATE public.chatgpt_connections' in k.get('input', b'')]
+        self.assertEqual(len(resets), 1)
+        self.assertTrue(resets[0][resets[0].index('-d') + 1].startswith('jt_restore_check_'))
