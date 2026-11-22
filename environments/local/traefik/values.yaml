@@ -46,4 +46,4 @@ gateway:
           matchExpressions:
             - key: kubernetes.io/metadata.name
               operator: In
-              values: [demo-api, job-tracker]
+              values: [demo-api, job-tracker, reaction-explorer]

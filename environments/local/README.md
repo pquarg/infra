@@ -267,3 +267,5 @@ Gateway API adoption, CRD ownership and the reviewed cutover are documented in
 Mailpit and job-tracker HTTPRoutes passed runtime verification. The final configuration disables Ingress support through a separate
 reviewed platform apply; rollback to Ingress requires restoring that support
 first. A healthy controller alone does not prove route attachment.
+
+See [Reaction Explorer](docs/reaction-explorer.md) for its dedicated deployment warehouse, read-only login and Gateway preparation.

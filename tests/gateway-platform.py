@@ -18,7 +18,7 @@ if sys.argv[1] == 'local':
     assert gateway['spec'] == {'gatewayClassName': 'traefik', 'listeners': [{
         'name': 'web', 'port': 8000, 'protocol': 'HTTP', 'allowedRoutes': {'namespaces': {
             'from': 'Selector', 'selector': {'matchExpressions': [{
-                'key': 'kubernetes.io/metadata.name', 'operator': 'In', 'values': ['demo-api', 'job-tracker']}]}}}}]}
+                'key': 'kubernetes.io/metadata.name', 'operator': 'In', 'values': ['demo-api', 'job-tracker', 'reaction-explorer']}]}}}}]}
     assert resources['GatewayClass', 'traefik']['spec']['controllerName'] == 'traefik.io/gateway-controller'
     service = resources['Service', 'traefik']
     assert service['spec']['type'] == 'NodePort'

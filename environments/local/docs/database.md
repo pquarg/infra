@@ -186,3 +186,5 @@ replace backups.
 [Job tracker](job-tracker.md) uses a dedicated database/login on this server,
 with additive provisioning and independent backups. Its helper does not change
 `local-database.sh` behaviour or demo credentials/storage.
+
+[Reaction Explorer](reaction-explorer.md) adds a separate deployment warehouse and read-only dashboard login on this server, with independent backup/recovery.
